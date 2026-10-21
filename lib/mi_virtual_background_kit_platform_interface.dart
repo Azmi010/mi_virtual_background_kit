@@ -26,4 +26,46 @@ abstract class MiVirtualBackgroundKitPlatform extends PlatformInterface {
   Future<String?> getPlatformVersion() {
     throw UnimplementedError('platformVersion() has not been implemented.');
   }
+
+  // --- Spike T0.4 (temporary) ---
+
+  Future<bool> spikeAttach(String trackId) {
+    throw UnimplementedError('spikeAttach() has not been implemented.');
+  }
+
+  Future<int> spikeFrameCount() {
+    throw UnimplementedError('spikeFrameCount() has not been implemented.');
+  }
+
+  Future<Map<dynamic, dynamic>> spikeInfo() {
+    throw UnimplementedError('spikeInfo() has not been implemented.');
+  }
+
+  Future<bool> spikeBenchmarkReadback() {
+    throw UnimplementedError('spikeBenchmarkReadback() has not been implemented.');
+  }
+
+  Future<Map<dynamic, dynamic>> spikeSegmentBenchmark() {
+    throw UnimplementedError('spikeSegmentBenchmark() has not been implemented.');
+  }
+
+  Future<Map<dynamic, dynamic>> spikeReadback() {
+    throw UnimplementedError('spikeReadback() has not been implemented.');
+  }
+
+  Future<bool> spikeEnableGpu(bool enabled) {
+    throw UnimplementedError('spikeEnableGpu() has not been implemented.');
+  }
+
+  Future<Map<dynamic, dynamic>> spikeGpuInfo() {
+    throw UnimplementedError('spikeGpuInfo() has not been implemented.');
+  }
+
+  Future<bool> spikeSetEnabled(bool enabled) {
+    throw UnimplementedError('spikeSetEnabled() has not been implemented.');
+  }
+
+  Future<bool> spikeDetach(String trackId) {
+    throw UnimplementedError('spikeDetach() has not been implemented.');
+  }
 }

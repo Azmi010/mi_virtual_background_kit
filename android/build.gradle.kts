@@ -1,4 +1,4 @@
-group = "com.example.mi_virtual_background_kit"
+group = "com.azmi010.mi_virtual_background_kit"
 version = "1.0-SNAPSHOT"
 
 buildscript {
@@ -26,7 +26,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.mi_virtual_background_kit"
+    namespace = "com.azmi010.mi_virtual_background_kit"
 
     compileSdk = 36
 
@@ -72,6 +72,20 @@ kotlin {
 }
 
 dependencies {
+    // libwebrtc is pulled in by flutter_webrtc with `implementation`, so it is not on
+    // this module's compile classpath. Declare it directly to compile against
+    // org.webrtc.* types. Must stay in sync with the flutter_webrtc version.
+    implementation("io.github.webrtc-sdk:android:150.7871.01")
+    // Spike T0.6: segmentation engine candidates.
+    implementation("com.google.mediapipe:tasks-vision:0.10.20")
+    implementation("com.google.mediapipe:tasks-core:0.10.20")
+    // MediaPipe links against Google's data transport runtime even though it
+    // never uses it for anything but optional logging. The classes must stay
+    // on the classpath or the engine fails to initialise, so the runtime is
+    // kept but its network scheduling is disabled at startup in
+    // SpikeSegmenterBenchmark.
+    implementation("com.google.android.datatransport:transport-runtime:3.1.0")
+    implementation("com.google.android.datatransport:transport-backend-cct:3.1.0")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")
 }
