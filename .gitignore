@@ -32,6 +32,6 @@ migrate_working_dir/
 /build/
 /coverage/
 
-# Local planning docs — do not commit
-PRD.md
-TASKS.md
+# The example build directory is symlinked outside the repository on some setups.
+# See tool/link_example_build.sh.
+example/build

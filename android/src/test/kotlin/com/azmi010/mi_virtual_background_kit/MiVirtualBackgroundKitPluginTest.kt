@@ -1,4 +1,4 @@
-package com.example.mi_virtual_background_kit
+package com.azmi010.mi_virtual_background_kit
 
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel

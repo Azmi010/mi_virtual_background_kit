@@ -16,4 +16,71 @@ class MethodChannelMiVirtualBackgroundKit extends MiVirtualBackgroundKitPlatform
     );
     return version;
   }
+
+  // --- Spike T0.4 (temporary) ---
+
+  Future<bool> spikeAttach(String trackId) async {
+    return await methodChannel.invokeMethod<bool>(
+          'spikeAttach',
+          <String, dynamic>{'trackId': trackId},
+        ) ??
+        false;
+  }
+
+  Future<int> spikeFrameCount() async {
+    return await methodChannel.invokeMethod<int>('spikeFrameCount') ?? 0;
+  }
+
+  Future<Map<dynamic, dynamic>> spikeInfo() async {
+    return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeInfo') ??
+        <dynamic, dynamic>{};
+  }
+
+  Future<bool> spikeBenchmarkReadback() async {
+    return await methodChannel.invokeMethod<bool>('spikeBenchmarkReadback') ?? false;
+  }
+
+  Future<Map<dynamic, dynamic>> spikeSegmentBenchmark() async {
+    return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeSegmentBenchmark') ??
+        <dynamic, dynamic>{};
+  }
+
+  Future<Map<dynamic, dynamic>> spikeCompositeBench() async {
+    return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeCompositeBench') ??
+        <dynamic, dynamic>{};
+  }
+
+  Future<Map<dynamic, dynamic>> spikeReadback() async {
+    return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeReadback') ??
+        <dynamic, dynamic>{};
+  }
+
+  Future<bool> spikeEnableGpu(bool enabled) async {
+    return await methodChannel.invokeMethod<bool>(
+          'spikeEnableGpu',
+          <String, dynamic>{'enabled': enabled},
+        ) ??
+        false;
+  }
+
+  Future<Map<dynamic, dynamic>> spikeGpuInfo() async {
+    return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeGpuInfo') ??
+        <dynamic, dynamic>{};
+  }
+
+  Future<bool> spikeSetEnabled(bool enabled) async {
+    return await methodChannel.invokeMethod<bool>(
+          'spikeSetEnabled',
+          <String, dynamic>{'enabled': enabled},
+        ) ??
+        false;
+  }
+
+  Future<bool> spikeDetach(String trackId) async {
+    return await methodChannel.invokeMethod<bool>(
+          'spikeDetach',
+          <String, dynamic>{'trackId': trackId},
+        ) ??
+        false;
+  }
 }
