@@ -79,6 +79,8 @@ dependencies {
     // Spike T0.6: segmentation engine candidates.
     implementation("com.google.mediapipe:tasks-vision:0.10.20")
     implementation("com.google.mediapipe:tasks-core:0.10.20")
+    // Spike T0.6: ML Kit Selfie Segmentation (temporary, spike only).
+    implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
     // MediaPipe links against Google's data transport runtime even though it
     // never uses it for anything but optional logging. The classes must stay
     // on the classpath or the engine fails to initialise, so the runtime is

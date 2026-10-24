@@ -49,6 +49,10 @@ abstract class MiVirtualBackgroundKitPlatform extends PlatformInterface {
     throw UnimplementedError('spikeSegmentBenchmark() has not been implemented.');
   }
 
+  Future<Map<dynamic, dynamic>> spikeCompositeBench() {
+    throw UnimplementedError('spikeCompositeBench() has not been implemented.');
+  }
+
   Future<Map<dynamic, dynamic>> spikeReadback() {
     throw UnimplementedError('spikeReadback() has not been implemented.');
   }

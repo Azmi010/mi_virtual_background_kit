@@ -1,6 +1,6 @@
 # Task Breakdown — mi_virtual_background_kit
 
-Referensi: [PRD-mi_virtual_background_kit.md](PRD-mi_virtual_background_kit.md)
+Referensi: [PRD.md](PRD.md)
 
 Konvensi: ID task `T<fase>.<nomor>`. Setiap task punya kriteria selesai (acceptance criteria) yang ringkas. Urutan fase mengikuti milestone M0 sampai M6. Repo dibuat di Fase 0 (T0.3).
 
@@ -17,15 +17,15 @@ Repo dibuat di awal fase ini supaya spike dan ADR punya tempat. Kode spike diker
 - [x] T0.4 Spike hook frame di `flutter_webrtc` untuk Android: tentukan cara memasang prosesor pada track kamera lokal dan versi yang mendukung. Selesai: prototipe yang mengubah frame (mis. membalik warna) terlihat di preview.
   - Hasil: `LocalVideoTrack.addProcessor(ExternalVideoFrameProcessing)` lewat `FlutterWebRTCPlugin.sharedSingleton.getLocalTrack(trackId)`. Frame masuk sebagai `TextureBufferImpl` tipe `OES`, rotasi 270, 640x480. 30 fps stabil. Lihat [docs/spike-results.md](docs/spike-results.md).
 - [x] T0.5 Spike hook frame di `flutter_webrtc` untuk iOS dengan tujuan yang sama. Selesai: prototipe berjalan di perangkat fisik.
-  - Hasil: `LocalVideoTrack.addProcessing(_:)` lewat `FlutterWebRTCPlugin.sharedSingleton().localTracks[trackId]`. Frame masuk sebagai `RTCCVPixelBuffer`, rotasi 90, 640x480, 4.920 frame diproses di iPhone 15 (iOS 26.5).
+  - Hasil: `LocalVideoTrack.addProcessing(_:)` lewat `FlutterWebRTCPlugin.sharedSingleton().localTracks[trackId]`. Buffer `RTCCVPixelBuffer` rot=90 640x480, 30 fps stabil di iPhone 15 (iOS 26.5). Format buffer dideteksi runtime (YCbCr biplanar vs BGRA); transform swap chroma sesuai format, verifikasi visual enable/disable di device.
 - [x] T0.6 Spike mesin segmentasi: bandingkan kandidat (MediaPipe Image Segmenter, ML Kit Selfie Segmentation) pada akurasi tepi, latency, ukuran, dan lisensi. Selesai: tabel perbandingan dengan angka dari minimal dua perangkat.
-  - Hasil: **MediaPipe Image Segmenter** dipilih (model 250 KB, Apache-2.0, latensi arm64 10 ms pada 256x192). **ML Kit ditolak**: menarik `datatransport` dan `firebase`, dan `MlKitInitProvider` gagal saat library itu dibuang dari classpath. Angka dari 3 perangkat (2 arm64, 1 armeabi-v7a) ada di [docs/spike-results.md](docs/spike-results.md).
+  - Hasil: tabel lengkap di [docs/spike-results.md](docs/spike-results.md) bagian T0.6 — angka dari P1 (Samsung SM-A135F fisik) + E1 (emulator, pembanding), overlay akurasi tepi di `docs/spike-t06/`. MediaPipe: mask resolusi input, Apache-2.0; ML Kit: mask fixed 256x256, lisensi ML Kit ToS (bukan open-source), dependensi telemetri Google. Rekomendasi sementara MediaPipe, final di T0.8.
 - [x] T0.7 Spike komposit (GPU dibanding CPU) untuk blur dan penggantian gambar. Selesai: pengukuran fps dan CPU pada resolusi 640×480 dan 720p.
-  - Hasil: **GPU wajib**. Komposit GLES2 0,8–1,7 ms per frame pada 640x480 (30 fps stabil), readback `toI420()` 30–92 ms (tidak bisa dipakai), `glReadPixels` 0,3–0,6 ms (cukup untuk segmentasi). 720p belum diukur, masuk benchmark Fase 6.
+  - Hasil: tabel 640x480 + 1280x720 di [docs/spike-results.md](docs/spike-results.md) bagian T0.7 (device P1). GPU blur/image: 30 fps stabil, compose ±1 ms. CPU: blur 70 ms / image 30 ms @640, blur 211 ms / image 91 ms @720 — belum termasuk upload. **GPU wajib.**
 - [x] T0.8 Tulis ADR (Architecture Decision Record) berisi keputusan: titik hook, mesin segmentasi, metode komposit, minimum OS, rentang versi `flutter_webrtc`. Selesai: file `docs/adr/0001-*.md` ter-commit di branch `main` repo (T0.3). Versi ringan yang dapat diterima: satu file `docs/decisions.md`.
-  - Hasil: [docs/adr/0001-core-architecture.md](docs/adr/0001-core-architecture.md) berisi 8 keputusan, alternatif yang ditolak, dan risiko. Angka pendukung di [docs/spike-results.md](docs/spike-results.md).
+  - Hasil: [docs/adr/0001-core-architecture.md](docs/adr/0001-core-architecture.md) — 8 keputusan (hook, format frame, MediaPipe, GPU, min OS, pin `^1.6.2`, paket, lisensi), alternatif ditolak, risiko + mitigasi. Angka pendukung di [docs/spike-results.md](docs/spike-results.md). Belum di-commit (menunggu review).
 - [x] T0.9 Finalisasi bentuk API publik berdasarkan hasil spike. Selesai: bagian 8 PRD diperbarui.
-  - Hasil: bagian 8 PRD diperbarui dengan `BackgroundQuality`, `BackgroundFit`, `BackgroundQualityPreset`, `isSupported()` sebagai instance method, dan daftar kode error FR-08.
+  - Hasil: PRD bagian 8 diperbarui 24 Okt 2026 — angka latensi kita (P1 32-bit: MP 179 ms @640), pin `flutter_webrtc ^1.6.2`, semantics gambar-as-bytes, control-plane-only. Klaim lama di bagian 7 soal ML Kit diganti dengan alasan terverifikasi (dependensi kapabel-network + lisensi ToS).
 
 ## Fase 1 — Konfigurasi repo dan CI (M1)
 

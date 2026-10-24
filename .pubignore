@@ -1,0 +1,39 @@
+# Keep local planning docs out of the pub.dev package even though they are
+# tracked in git (pub uses .pubignore instead of .gitignore when present).
+PRD.md
+TASKS.md
+
+# --- below mirrors .gitignore (pub ignores .pubignore, not .gitignore) ---
+
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Flutter/Dart/Pub related
+# Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.
+/pubspec.lock
+**/doc/api/
+.dart_tool/
+.flutter-plugins-dependencies
+/build/
+/coverage/
+
+# The example build directory is symlinked outside the repository on some setups.
+# See tool/link_example_build.sh.
+example/build

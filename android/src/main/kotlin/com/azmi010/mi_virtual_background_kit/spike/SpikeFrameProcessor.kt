@@ -43,6 +43,9 @@ class SpikeFrameProcessor(
         private set
 
     override fun onFrame(frame: VideoFrame): VideoFrame {
+        arrivals.incrementAndGet()
+        fulfillReadbackIfNeeded(frame)
+        fulfillImageIfNeeded()
         if (!enabled) return frame
         frames.incrementAndGet()
         lastFrame = frame
@@ -89,6 +92,79 @@ class SpikeFrameProcessor(
     /** Optional GPU compositor used instead of the plain transform. */
     @Volatile
     var compositor: SpikeGpuCompositor? = null
+
+    // --- Readback from the capture thread -----------------------------------
+    //
+    // glReadPixels only works on the thread that owns the EGL context, i.e. the
+    // capture thread that runs onFrame. Main-thread reads return an all-zero
+    // buffer. The method channel sets readbackRequest, the next frame fulfils
+    // it, and the caller waits on the latch.
+
+    @Volatile
+    private var readbackRequest = false
+
+    @Volatile
+    var readbackBytes: ByteArray? = null
+        private set
+
+    @Volatile
+    private var readbackLatch: java.util.concurrent.CountDownLatch? = null
+
+    // Frames seen per second regardless of effect state — benchmark FPS source.
+    private val arrivals = java.util.concurrent.atomic.AtomicInteger(0)
+    val arrivalCount: Int get() = arrivals.get()
+
+    /** [Triple] of (rgbaBytes, width, height) waiting for capture-thread upload. */
+    @Volatile
+    private var imageRequest: Triple<ByteArray, Int, Int>? = null
+
+    @Volatile
+    private var imageLatch: java.util.concurrent.CountDownLatch? = null
+
+    /** Uploads the effect image to GL. Blocks the caller until capture runs. */
+    fun requestImage(bytes: ByteArray, width: Int, height: Int, timeoutMs: Long = 3000): Boolean {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        imageRequest = Triple(bytes, width, height)
+        imageLatch = latch
+        return latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
+
+    private fun fulfillImageIfNeeded() {
+        val req = imageRequest ?: return
+        imageRequest = null
+        try {
+            compositor?.uploadImage(req.first, req.second, req.third)
+        } catch (t: Throwable) {
+            android.util.Log.e("MiVBGSpike", "image upload failed: $t")
+        }
+        imageLatch?.countDown()
+    }
+
+    /** Asks the capture thread to read the current frame back. Blocks the caller. */
+    fun requestReadback(timeoutMs: Long = 3000): Boolean {
+        readbackBytes = null
+        val latch = java.util.concurrent.CountDownLatch(1)
+        readbackLatch = latch
+        readbackRequest = true
+        return latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
+
+    private fun fulfillReadbackIfNeeded(frame: VideoFrame) {
+        if (!readbackRequest) return
+        readbackRequest = false
+        val gpu = compositor
+        val texture = frame.buffer as? VideoFrame.TextureBuffer
+        var bytes: ByteArray? = null
+        if (gpu != null && texture != null) {
+            try {
+                bytes = gpu.readBackRgba(texture)
+            } catch (t: Throwable) {
+                android.util.Log.e("MiVBGSpike", "readback failed: $t")
+            }
+        }
+        if (bytes != null) readbackBytes = bytes
+        readbackLatch?.countDown()
+    }
 
     @Volatile
     var compositeColor: FloatArray = floatArrayOf(0.1f, 0.4f, 0.9f)

@@ -101,7 +101,7 @@ Angka di bawah adalah target awal yang divalidasi lewat benchmark pada fase peng
 - Performa: mempertahankan 24–30 fps pada resolusi 640×480 hingga 720p di perangkat kelas menengah; tambahan latency per frame dicatat dan dipublikasikan di README. Target diukur di spike: komposit GPU 1 ms per frame pada 640×480 di perangkat low-end 32-bit.
 - Resource: penggunaan CPU, memori, dan baterai diukur dan dilaporkan di bagian "Batasan".
 - Ukuran: model dan dependensi native tidak membengkakkan ukuran app secara berlebihan; model besar dibuat opsional atau diunduh saat runtime. Model segmentasi yang dipakai `selfie_segmenter.tflite` berukuran 250 KB dan di-_bundle_ sebagai asset, tanpa unduhan saat runtime.
-- Privasi: semua pemrosesan on-device, tanpa panggilan jaringan, tanpa telemetri. Mesin segmentasi MediaPipe dipilih karena ML Kit Selfie Segmentation menarik `datatransport` dan `firebase` sehingga tidak bisa dibuang dari classpath tanpa membuat aplikasi gagal start.
+- Privasi: semua pemrosesan on-device, tanpa panggilan jaringan, tanpa telemetri. Mesin segmentasi MediaPipe dipilih; ML Kit Selfie Segmentation menarik stack `datatransport` + `firebase-encoders` + `play-services` (kapabel network) dan berlisensi ML Kit Terms of Service, sehingga tidak cocok untuk package MIT tanpa-jaringan (bandingkan [ADR 0001](docs/adr/0001-core-architecture.md)).
 - Kompatibilitas: rentang versi `flutter_webrtc` yang didukung dinyatakan eksplisit dan diuji di batas bawah dan atas. Rentang yang diuji pada spike: `1.6.2` sampai `1.6.2+hotfix.4`.
 - Versi OS minimum: ditetapkan setelah spike (kandidat: Android minSdk 24, iOS 13). Ditetapkan pada spike: Android minSdk 24, iOS 13.
 - Kualitas kode: `flutter analyze` tanpa peringatan; target pub points maksimum.
@@ -109,7 +109,8 @@ Angka di bawah adalah target awal yang divalidasi lewat benchmark pada fase peng
 
 ## 8. Draft API publik
 
-Bentuk final ditetapkan setelah spike teknis.
+Bentuk dasar di bawah ini ditinjau ulang setelah spike M0; penyesuaian final ada di
+bagian bawah ("Bentuk final setelah spike").
 
 ```dart
 import 'package:mi_virtual_background_kit/mi_virtual_background_kit.dart';
@@ -140,23 +141,28 @@ Prinsip desain API:
 - Permukaan publik dibuat sekecil mungkin; implementasi berada di `lib/src/`.
 - Gambar dikirim sebagai bytes ke native; Dart tidak pernah menangani frame video.
 
-### Bentuk final setelah spike (21 Oktober 2026)
+### Bentuk final setelah spike (24 Oktober 2026)
 
-Bentuk di atas tetap, dengan penyesuaian berikut hasil spike (lihat
-[ADR 0001](docs/adr/0001-core-architecture.md)):
+Bentuk di atas tetap, dengan penyesuaian berikut hasil spike M0 (lihat
+[ADR 0001](docs/adr/0001-core-architecture.md) dan
+[spike-results](docs/spike-results.md)):
 
 - `attach` menerima `MediaStreamTrack` dari `flutter_webrtc`, bukan objek kit sendiri.
-  Hook native mencari track lewat `track.id` di registry `flutter_webrtc`.
+  Hook native mencari track lewat `track.id` di registry `flutter_webrtc`
+  (terverifikasi di kedua platform: `LocalVideoTrack.addProcessor` / `addProcessing`).
 - `isSupported()` menjadi instance method (`kit.isSupported()`), karena kelayakan dukungan
   bergantung pada perangkat dan kapabilitas GPU, bukan hanya versi OS.
-- Ditambah parameter kualitas pada `attach`, karena spike menunjukkan latensi segmentasi
-  berbeda jauh antara perangkat arm64 (10 ms) dan 32-bit (115 ms):
+- Ditambah parameter kualitas pada `attach`. Angka spike: latensi segmentasi sangat
+  berbeda antar perangkat — MediaPipe @640x480 median **179 ms** di perangkat 32-bit
+  fisik (input 256: 174 ms, 96: 122 ms — arsitektur mendominasi, bukan resolusi),
+  sedangkan perangkat arm64 berkisar belasan ms. Default karenanya konservatif dan
+  harus bisa dinaikkan per aplikasi:
 
   ```dart
   await kit.attach(
     localVideoTrack,
     quality: const BackgroundQuality(
-      segmentationWidth: 256,   // lebar input segmentasi
+      segmentationWidth: 256,   // lebar input segmentasi (mask MediaPipe = resolusi ini)
       edgeSmoothing: 0.5,        // 0..1
       targetFps: 30,             // fps komposit
     ),
@@ -172,6 +178,13 @@ Bentuk di atas tetap, dengan penyesuaian berikut hasil spike (lihat
   menerapkannya pada frame berikutnya.
 - Semua efek pada v0.1 memerlukan segmentasi orang, kecuali `NoEffect` yang benar-benar
   melewati seluruh pipeline.
+- Package menetapkan dependensi `flutter_webrtc: ^1.6.2` (spike memakai API processor
+  native di dalamnya). Perubahan hook di versi baru ditangani dengan membatasi rentang
+  versi di `pubspec.yaml`, bukan dengan fork.
+- Gambar efek selalu diberikan aplikasi (asset / path / bytes) dan diteruskan sebagai
+  bytes ke native; kit tidak menyimpan atau mengunduh apa pun (sejalan non-tujuan §3).
+- Seluruh pemrosesan frame terjadi di native (GPU); semua API di bagian ini hanya
+  control plane Dart — tidak ada frame video yang melewati Dart (sejalan §9).
 
 ## 9. Arsitektur
 

@@ -21,6 +21,9 @@ class MiVirtualBackgroundKit {
   Future<Map<dynamic, dynamic>> spikeSegmentBenchmark() =>
       MiVirtualBackgroundKitPlatform.instance.spikeSegmentBenchmark();
 
+  Future<Map<dynamic, dynamic>> spikeCompositeBench() =>
+      MiVirtualBackgroundKitPlatform.instance.spikeCompositeBench();
+
   Future<Map<dynamic, dynamic>> spikeReadback() =>
       MiVirtualBackgroundKitPlatform.instance.spikeReadback();
 

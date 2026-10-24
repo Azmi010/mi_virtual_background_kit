@@ -45,6 +45,11 @@ class MethodChannelMiVirtualBackgroundKit extends MiVirtualBackgroundKitPlatform
         <dynamic, dynamic>{};
   }
 
+  Future<Map<dynamic, dynamic>> spikeCompositeBench() async {
+    return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeCompositeBench') ??
+        <dynamic, dynamic>{};
+  }
+
   Future<Map<dynamic, dynamic>> spikeReadback() async {
     return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeReadback') ??
         <dynamic, dynamic>{};

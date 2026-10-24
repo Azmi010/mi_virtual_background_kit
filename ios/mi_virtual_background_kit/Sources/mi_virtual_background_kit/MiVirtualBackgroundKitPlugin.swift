@@ -7,8 +7,8 @@ import flutter_webrtc
 /// track created by flutter_webrtc and that transformed frames reach the
 /// renderer.
 ///
-/// The transform inverts the chroma planes of an I420 frame, which produces a
-/// visible colour shift in the preview.
+/// The transform swaps chroma data in the camera's pixel buffer (Cb/Cr for
+/// YCbCr, R/B for BGRA), which produces a visible colour shift in the preview.
 public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin {
   private var spikeProcessor: SpikeFrameProcessor?
 
@@ -66,6 +66,10 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin {
       let args = call.arguments as? [String: Any]
       spikeProcessor?.enabled = (args?["enabled"] as? Bool) ?? true
       result(true)
+    case "spikeBenchmarkReadback":
+      // CPU readback benchmark is Android-only; no-op so the example timer
+      // does not hit MissingPluginException.
+      result(true)
     case "spikeDetach":
       guard let args = call.arguments as? [String: Any],
             let trackId = args["trackId"] as? String else {
@@ -81,7 +85,7 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin {
   }
 }
 
-/// Frame processor that inverts the chroma planes of an I420 frame.
+/// Frame processor that swaps chroma data so the preview visibly changes.
 final class SpikeFrameProcessor: NSObject, ExternalVideoProcessingDelegate {
   private let lock = NSLock()
   private var frames = 0
@@ -182,32 +186,102 @@ enum SpikeHook {
 
 /// Marks the frame buffer so the preview visibly changes.
 ///
-/// The camera buffer on iOS is a read-only `RTCCVPixelBuffer` (CVPixelBuffer),
-/// so the spike swaps it for a copy that has its chroma inverted. The real
-/// implementation will composite on the GPU with Core Image or Metal.
+/// The pixel format is detected at runtime: camera frames may arrive as
+/// `32BGRA` or as a biplanar YCbCr buffer. For YCbCr the Cb/Cr plane pairs are
+/// swapped (the iOS equivalent of the Android spike's U/V swap); the luma plane
+/// is left untouched so the image stays free of banding.
+///
+/// The real implementation will composite on the GPU with Core Image or Metal.
 enum SpikeInvert {
+  private static var loggedFormat = false
+  private static var loggedLockFailure = false
+  private static var loggedUnsupported = false
+
   static func apply(_ frame: RTCVideoFrame) -> RTCVideoFrame {
     guard let pixelBuffer = (frame.buffer as? RTCCVPixelBuffer)?.pixelBuffer else {
       return frame
     }
-    CVPixelBufferLockBaseAddress(pixelBuffer, [])
+
+    let fmt = CVPixelBufferGetPixelFormatType(pixelBuffer)
+    if !loggedFormat {
+      loggedFormat = true
+      NSLog(
+        "MiVBGSpike pixelFormat=\(fourCC(fmt)) planes=\(CVPixelBufferGetPlaneCount(pixelBuffer))")
+    }
+
+    let status = CVPixelBufferLockBaseAddress(pixelBuffer, [])
+    guard status == kCVReturnSuccess else {
+      if !loggedLockFailure {
+        loggedLockFailure = true
+        NSLog("MiVBGSpike CVPixelBufferLockBaseAddress failed: \(status)")
+      }
+      return frame
+    }
     defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
 
-    let width = CVPixelBufferGetWidth(pixelBuffer)
-    let height = CVPixelBufferGetHeight(pixelBuffer)
-    let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
-    let base = CVPixelBufferGetBaseAddress(pixelBuffer)!
-
-    // BGRA: swap the red and blue channels, which is visible in the preview.
-    for y in 0..<height {
-      let row = base.advanced(by: y * bytesPerRow).assumingMemoryBound(to: UInt8.self)
-      for x in stride(from: 0, to: width, by: 2) {
-        let i = x * 4
-        let r = row[i]
-        row[i] = row[i + 2]
-        row[i + 2] = r
+    switch fmt {
+    case kCVPixelFormatType_32BGRA:
+      swapBGRA(pixelBuffer)
+    case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+         kCVPixelFormatType_420YpCbCr8BiPlanarFullRange:
+      swapChromaPlane(pixelBuffer)
+    default:
+      if !loggedUnsupported {
+        loggedUnsupported = true
+        NSLog("MiVBGSpike unsupported pixel format \(fourCC(fmt)); no transform applied")
       }
     }
     return frame
+  }
+
+  /// Swaps the red and blue channels of every BGRA pixel, visible as a hue shift.
+  private static func swapBGRA(_ pixelBuffer: CVPixelBuffer) {
+    guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return }
+    let width = CVPixelBufferGetWidth(pixelBuffer)
+    let height = CVPixelBufferGetHeight(pixelBuffer)
+    let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+    for y in 0..<height {
+      let row = base.advanced(by: y * bytesPerRow).assumingMemoryBound(to: UInt8.self)
+      for x in 0..<width {
+        let i = x * 4
+        if i + 2 >= bytesPerRow { break }
+        let r = row[i + 2]
+        row[i + 2] = row[i]
+        row[i] = r
+      }
+    }
+  }
+
+  /// Swaps each Cb/Cr byte pair in plane 1 of a biplanar YCbCr buffer.
+  ///
+  /// Chroma is interleaved (CbCrCbCr...) so this is a straight pairwise swap
+  /// across the row; luma (plane 0) is not modified.
+  private static func swapChromaPlane(_ pixelBuffer: CVPixelBuffer) {
+    guard CVPixelBufferGetPlaneCount(pixelBuffer) > 1,
+          let base = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1)
+    else { return }
+    let height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 1)
+    let bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1)
+    for y in 0..<height {
+      let row = base.advanced(by: y * bytesPerRow).assumingMemoryBound(to: UInt8.self)
+      var x = 0
+      while x + 1 < bytesPerRow {
+        let t = row[x]
+        row[x] = row[x + 1]
+        row[x + 1] = t
+        x += 2
+      }
+    }
+  }
+
+  private static func fourCC(_ value: OSType) -> String {
+    let bytes: [UInt8] = [
+      UInt8((value >> 24) & 0xff),
+      UInt8((value >> 16) & 0xff),
+      UInt8((value >> 8) & 0xff),
+      UInt8(value & 0xff),
+    ]
+    let s = String(bytes: bytes, encoding: .ascii) ?? "?"
+    return "\(s) (0x\(String(value, radix: 16)))"
   }
 }

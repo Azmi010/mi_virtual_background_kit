@@ -82,23 +82,8 @@ class _SpikePageState extends State<SpikePage> {
         debugPrint('SPIKE gpuEnabled=$gpuOk');
       }
 
-      _timer = Timer.periodic(const Duration(seconds: 1), (_) async {
-        final info = await _kit.spikeInfo();
-        final n = (info['frames'] as int?) ?? 0;
-        final gpu = Platform.isAndroid ? await _kit.spikeGpuInfo() : <dynamic, dynamic>{};
-        setState(() {
-          _fps = n - _lastCount;
-          _lastCount = n;
-          _frames = n;
-          _gpuMicros = (gpu['compositeMicros'] as int?) ?? 0;
-          _gpuCount = (gpu['compositeCount'] as int?) ?? 0;
-          _gpuType = (gpu['inputType'] as String?) ?? '';
-        });
-        debugPrint(
-          'SPIKE frames=$n fps=$_fps buffer=${info['bufferType']} '
-          'rot=${info['rotation']} size=${info['width']}x${info['height']} '
-          'gpu=${_gpuMicros}us count=$_gpuCount type=$_gpuType',
-        );
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateHud());
+      Future<void>.delayed(const Duration(seconds: 1), () async {
         if (_benchmarked) return;
         _benchmarked = true;
         if (Platform.isAndroid) {
@@ -106,6 +91,7 @@ class _SpikePageState extends State<SpikePage> {
           debugPrint('SPIKE readback=$rb');
           final seg = await _kit.spikeSegmentBenchmark();
           debugPrint('SPIKE segment=$seg');
+          await _runCompositeStages();
         } else {
           await _kit.spikeBenchmarkReadback();
         }
@@ -114,6 +100,67 @@ class _SpikePageState extends State<SpikePage> {
       setState(() => _status = 'ERROR $e');
       debugPrint('SPIKE error $e');
     }
+  }
+
+  Future<void> _runCompositeStages() async {
+    setState(() => _status = 'composite bench @640...');
+    final r1 = await _kit.spikeCompositeBench();
+    debugPrint('COMPOSITE640 $r1');
+    setState(() => _status = 'composite640 done');
+
+    // Tear the 640p track down so the next getUserMedia gets fresh 720p
+    // constraints — flutter_webrtc would otherwise share the old VideoSource.
+    _timer?.cancel();
+    try {
+      await _kit.spikeDetach(_stream!.getVideoTracks().first.id!);
+    } catch (_) {
+      // Detach is best-effort; the stream is disposed right after.
+    }
+    _stream?.getTracks().forEach((t) => t.stop());
+    await _stream?.dispose();
+
+    final s2 = await navigator.mediaDevices.getUserMedia(
+      const {
+        'audio': false,
+        'video': {
+          'facingMode': 'user',
+          'width': 1280,
+          'height': 720,
+          'frameRate': 30,
+        },
+      },
+    );
+    _stream = s2;
+    _renderer.srcObject = s2;
+    final t2 = s2.getVideoTracks().first;
+    await _kit.spikeAttach(t2.id!);
+    await _kit.spikeEnableGpu(true);
+
+    setState(() => _status = 'composite bench @720p...');
+    final r2 = await _kit.spikeCompositeBench();
+    debugPrint('COMPOSITE720 $r2');
+    setState(() => _status = 'composite720 done ${r2['w']}x${r2['h']}');
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateHud());
+  }
+
+  Future<void> _updateHud() async {
+    final info = await _kit.spikeInfo();
+    final n = (info['frames'] as int?) ?? 0;
+    final gpu = Platform.isAndroid ? await _kit.spikeGpuInfo() : <dynamic, dynamic>{};
+    setState(() {
+      _fps = n - _lastCount;
+      _lastCount = n;
+      _frames = n;
+      _gpuMicros = (gpu['compositeMicros'] as int?) ?? 0;
+      _gpuCount = (gpu['compositeCount'] as int?) ?? 0;
+      _gpuType = (gpu['inputType'] as String?) ?? '';
+    });
+    debugPrint(
+      'SPIKE frames=$n fps=$_fps buffer=${info['bufferType']} '
+      'rot=${info['rotation']} size=${info['width']}x${info['height']} '
+      'gpu=${_gpuMicros}us count=$_gpuCount type=$_gpuType',
+    );
   }
 
   Future<void> _toggleTransform() async {

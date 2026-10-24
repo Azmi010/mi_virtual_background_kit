@@ -22,6 +22,33 @@ import java.nio.FloatBuffer
  */
 class SpikeGpuCompositor {
     private var program = 0
+    private var readbackProgram = 0
+    private var rbAPos = 0
+    private var rbATex = 0
+    private var rbUMvp = 0
+    private var rbUTex = 0
+
+    // T0.7 effect programs: 0 = tint (preview spike), 1 = blur, 2 = image mix.
+    @Volatile
+    var effectMode: Int = 0
+
+    private var blurProgram = 0
+    private var blAPos = 0
+    private var blATex = 0
+    private var blUMvp = 0
+    private var blUTex = 0
+    private var blUTexel = 0
+
+    private var imgProgram = 0
+    private var imAPos = 0
+    private var imATex = 0
+    private var imUMvp = 0
+    private var imUTex = 0
+    private var imUImg = 0
+    private var imageTex = 0
+    private var imageWidth = 0
+    private var imageHeight = 0
+
     private var fbo = 0
     private var outTexture = 0
     private var outWidth = 0
@@ -43,6 +70,38 @@ class SpikeGpuCompositor {
     @Volatile
     var compositeCount: Long = 0
         private set
+
+    /** Cumulative microseconds — benchmark takes deltas around a window. */
+    @Volatile
+    var compositeTotalMicros: Long = 0
+        private set
+
+    /** Uploads the effect image (RGBA) into a GL texture. Capture thread only. */
+    fun uploadImage(bytes: ByteArray, width: Int, height: Int) {
+        val buffer = java.nio.ByteBuffer.allocateDirect(bytes.size)
+        buffer.put(bytes)
+        buffer.position(0)
+        if (imageTex == 0) {
+            val textures = IntArray(1)
+            GLES20.glGenTextures(1, textures, 0)
+            imageTex = textures[0]
+        }
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, imageTex)
+        GLES20.glTexImage2D(
+            GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, width, height, 0,
+            GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buffer,
+        )
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        imageWidth = width
+        imageHeight = height
+    }
+
+    val imageUploaded: Boolean get() = imageTex != 0
 
     /**
      * Reads the camera texture back into a CPU RGBA buffer.
@@ -70,7 +129,8 @@ class SpikeGpuCompositor {
             }
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo)
             GLES20.glViewport(0, 0, outWidth, outHeight)
-            drawCamera(buffer, target)
+            if (readbackProgram == 0) buildReadbackProgram()
+            drawCamera(buffer, target, readbackProgram, rbAPos, rbATex, rbUMvp, rbUTex)
             GLES20.glReadPixels(
                 0, 0, outWidth, outHeight, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, outBuffer,
             )
@@ -80,18 +140,33 @@ class SpikeGpuCompositor {
                 0, 0, width, height, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, outBuffer,
             )
         }
+        outBuffer.position(0)
+        outBuffer.get(out)
         readbackMicros = (System.nanoTime() - start) / 1000
         readbackWidth = width
         readbackHeight = height
         return out
     }
 
-    private fun drawCamera(buffer: VideoFrame.TextureBuffer, target: Int) {
-        if (program == 0) buildProgram()
+    private fun ensureBuffers() {
+        if (vertexBuffer == null) vertexBuffer = GlUtil.createFloatBuffer(vertices)
+        if (texMatrixBuffer == null) texMatrixBuffer = GlUtil.createFloatBuffer(identity)
+    }
+
+    private fun drawCamera(
+        buffer: VideoFrame.TextureBuffer,
+        target: Int,
+        program: Int,
+        aPos: Int,
+        aTex: Int,
+        uMvp: Int,
+        uTex: Int,
+    ) {
+        ensureBuffers()
         GLES20.glUseProgram(program)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(target, buffer.textureId)
-        GLES20.glUniform1i(uTexLoc, 0)
+        GLES20.glUniform1i(uTex, 0)
         val matrix = FloatArray(9)
         buffer.transformMatrix?.getValues(matrix)
         val m4 = floatArrayOf(
@@ -103,16 +178,16 @@ class SpikeGpuCompositor {
         texMatrixBuffer?.position(0)
         texMatrixBuffer?.put(m4)
         texMatrixBuffer?.position(0)
-        GLES20.glUniformMatrix4fv(uMvpLoc, 1, false, m4, 0)
+        GLES20.glUniformMatrix4fv(uMvp, 1, false, m4, 0)
         vertexBuffer?.position(0)
-        GLES20.glEnableVertexAttribArray(aPosLoc)
-        GLES20.glVertexAttribPointer(aPosLoc, 2, GLES20.GL_FLOAT, false, 0, vertexBuffer)
+        GLES20.glEnableVertexAttribArray(aPos)
+        GLES20.glVertexAttribPointer(aPos, 2, GLES20.GL_FLOAT, false, 0, vertexBuffer)
         texMatrixBuffer?.position(0)
-        GLES20.glEnableVertexAttribArray(aTexLoc)
-        GLES20.glVertexAttribPointer(aTexLoc, 2, GLES20.GL_FLOAT, false, 0, texMatrixBuffer)
+        GLES20.glEnableVertexAttribArray(aTex)
+        GLES20.glVertexAttribPointer(aTex, 2, GLES20.GL_FLOAT, false, 0, texMatrixBuffer)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
-        GLES20.glDisableVertexAttribArray(aPosLoc)
-        GLES20.glDisableVertexAttribArray(aTexLoc)
+        GLES20.glDisableVertexAttribArray(aPos)
+        GLES20.glDisableVertexAttribArray(aTex)
     }
 
     @Volatile
@@ -174,9 +249,6 @@ class SpikeGpuCompositor {
         GLES20.glClearColor(color[0], color[1], color[2], 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
 
-        GLES20.glUseProgram(program)
-        GLES20.glUniform1i(uTexLoc, 0)
-
         val matrix = FloatArray(9)
         buffer.transformMatrix?.getValues(matrix)
         // The texture transform is a 3x3 affine matrix; GL wants 4x4.
@@ -186,22 +258,34 @@ class SpikeGpuCompositor {
             matrix[6], matrix[7], matrix[8], 0f,
             0f, 0f, 0f, 1f,
         )
-        texMatrixBuffer?.position(0)
-        texMatrixBuffer?.put(m4)
-        texMatrixBuffer?.position(0)
-        GLES20.glUniformMatrix4fv(uMvpLoc, 1, false, m4, 0)
 
-        vertexBuffer?.position(0)
-        GLES20.glEnableVertexAttribArray(aPosLoc)
-        GLES20.glVertexAttribPointer(aPosLoc, 2, GLES20.GL_FLOAT, false, 0, vertexBuffer)
-        texMatrixBuffer?.position(0)
-        GLES20.glEnableVertexAttribArray(aTexLoc)
-        GLES20.glVertexAttribPointer(aTexLoc, 2, GLES20.GL_FLOAT, false, 0, texMatrixBuffer)
-
-        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
-
-        GLES20.glDisableVertexAttribArray(aPosLoc)
-        GLES20.glDisableVertexAttribArray(aTexLoc)
+        // Fall back to tint when the image texture is not uploaded yet.
+        val mode = if (effectMode == 2 && imageTex == 0) 0 else effectMode
+        when (mode) {
+            1 -> {
+                if (blurProgram == 0) buildBlurProgram()
+                GLES20.glUseProgram(blurProgram)
+                GLES20.glUniform1i(blUTex, 0)
+                GLES20.glUniform2f(blUTexel, 1f / outWidth, 1f / outHeight)
+                drawQuad(blurProgram, blAPos, blATex, blUMvp, m4)
+            }
+            2 -> {
+                if (imgProgram == 0) buildImageProgram()
+                GLES20.glUseProgram(imgProgram)
+                GLES20.glUniform1i(imUTex, 0)
+                GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
+                GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, imageTex)
+                GLES20.glUniform1i(imUImg, 1)
+                GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+                drawQuad(imgProgram, imAPos, imATex, imUMvp, m4)
+            }
+            else -> {
+                if (program == 0) buildProgram()
+                GLES20.glUseProgram(program)
+                GLES20.glUniform1i(uTexLoc, 0)
+                drawQuad(program, aPosLoc, aTexLoc, uMvpLoc, m4)
+            }
+        }
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
 
         val out = TextureBufferImpl(
@@ -215,9 +299,28 @@ class SpikeGpuCompositor {
             Runnable { },
         )
 
-        compositeMicros = (System.nanoTime() - start) / 1000
+        val us = (System.nanoTime() - start) / 1000
+        compositeMicros = us
+        compositeTotalMicros += us
         compositeCount++
         return VideoFrame(out, frame.rotation, frame.timestampNs)
+    }
+
+    private fun drawQuad(program: Int, aPos: Int, aTex: Int, uMvp: Int, m4: FloatArray) {
+        ensureBuffers()
+        texMatrixBuffer?.position(0)
+        texMatrixBuffer?.put(m4)
+        texMatrixBuffer?.position(0)
+        GLES20.glUniformMatrix4fv(uMvp, 1, false, m4, 0)
+        vertexBuffer?.position(0)
+        GLES20.glEnableVertexAttribArray(aPos)
+        GLES20.glVertexAttribPointer(aPos, 2, GLES20.GL_FLOAT, false, 0, vertexBuffer)
+        texMatrixBuffer?.position(0)
+        GLES20.glEnableVertexAttribArray(aTex)
+        GLES20.glVertexAttribPointer(aTex, 2, GLES20.GL_FLOAT, false, 0, texMatrixBuffer)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        GLES20.glDisableVertexAttribArray(aPos)
+        GLES20.glDisableVertexAttribArray(aTex)
     }
 
     private fun createOutput(width: Int, height: Int) {
@@ -295,6 +398,46 @@ class SpikeGpuCompositor {
         android.util.Log.i("MiVBGSpike", "program=$program aPos=$aPosLoc aTex=$aTexLoc uMvp=$uMvpLoc uTex=$uTexLoc")
     }
 
+    /** Untinted program for readback — [buildProgram] zeroes G/B for the preview spike. */
+    private fun buildReadbackProgram() {
+        val vertexShader = """
+            attribute vec4 aPos;
+            attribute vec2 aTex;
+            uniform mat4 uMvp;
+            varying vec2 vTex;
+            void main() {
+                gl_Position = aPos;
+                vTex = (uMvp * vec4(aTex, 0.0, 1.0)).xy;
+            }
+        """.trimIndent()
+        val fragmentShader = """
+            #extension GL_OES_EGL_image_external : require
+            precision mediump float;
+            varying vec2 vTex;
+            uniform samplerExternalOES uTex;
+            void main() {
+                gl_FragColor = texture2D(uTex, vTex);
+            }
+        """.trimIndent()
+        val vs = compileShader(GLES20.GL_VERTEX_SHADER, vertexShader)
+        val fs = compileShader(GLES20.GL_FRAGMENT_SHADER, fragmentShader)
+        val p = GLES20.glCreateProgram()
+        GLES20.glAttachShader(p, vs)
+        GLES20.glAttachShader(p, fs)
+        GLES20.glLinkProgram(p)
+        val status = IntArray(1)
+        GLES20.glGetProgramiv(p, GLES20.GL_LINK_STATUS, status, 0)
+        if (status[0] == 0) {
+            android.util.Log.e("MiVBGSpike", "readback program link failed: ${GLES20.glGetProgramInfoLog(p)}")
+        }
+        readbackProgram = p
+        rbAPos = GLES20.glGetAttribLocation(p, "aPos")
+        rbATex = GLES20.glGetAttribLocation(p, "aTex")
+        rbUMvp = GLES20.glGetUniformLocation(p, "uMvp")
+        rbUTex = GLES20.glGetUniformLocation(p, "uTex")
+        android.util.Log.i("MiVBGSpike", "readbackProgram=$p aPos=$rbAPos aTex=$rbATex")
+    }
+
     private fun compileShader(type: Int, source: String): Int {
         val shader = GLES20.glCreateShader(type)
         GLES20.glShaderSource(shader, source)
@@ -305,6 +448,86 @@ class SpikeGpuCompositor {
             android.util.Log.e("MiVBGSpike", "shader compile failed: ${GLES20.glGetShaderInfoLog(shader)}")
         }
         return shader
+    }
+
+    private fun linkProgram(fragmentSource: String): Int {
+        val vertexSource = """
+            attribute vec4 aPos;
+            attribute vec2 aTex;
+            uniform mat4 uMvp;
+            varying vec2 vTex;
+            void main() {
+                gl_Position = aPos;
+                vTex = (uMvp * vec4(aTex, 0.0, 1.0)).xy;
+            }
+        """.trimIndent()
+        val vs = compileShader(GLES20.GL_VERTEX_SHADER, vertexSource)
+        val fs = compileShader(GLES20.GL_FRAGMENT_SHADER, fragmentSource)
+        val p = GLES20.glCreateProgram()
+        GLES20.glAttachShader(p, vs)
+        GLES20.glAttachShader(p, fs)
+        GLES20.glLinkProgram(p)
+        val status = IntArray(1)
+        GLES20.glGetProgramiv(p, GLES20.GL_LINK_STATUS, status, 0)
+        if (status[0] == 0) {
+            android.util.Log.e("MiVBGSpike", "program link failed: ${GLES20.glGetProgramInfoLog(p)}")
+        }
+        return p
+    }
+
+    /** 3x3 separable-free box-ish blur, nine taps weighted 4/2/1. */
+    private fun buildBlurProgram() {
+        val fragment = """
+            #extension GL_OES_EGL_image_external : require
+            precision mediump float;
+            varying vec2 vTex;
+            uniform samplerExternalOES uTex;
+            uniform vec2 uTexel;
+            void main() {
+                vec4 sum = vec4(0.0);
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        float w = 1.0;
+                        if (dx == 0 && dy == 0) w = 4.0;
+                        else if (dx == 0 || dy == 0) w = 2.0;
+                        sum += texture2D(uTex, vTex + vec2(float(dx), float(dy)) * uTexel) * w;
+                    }
+                }
+                gl_FragColor = sum / 16.0;
+            }
+        """.trimIndent()
+        val p = linkProgram(fragment)
+        blurProgram = p
+        blAPos = GLES20.glGetAttribLocation(p, "aPos")
+        blATex = GLES20.glGetAttribLocation(p, "aTex")
+        blUMvp = GLES20.glGetUniformLocation(p, "uMvp")
+        blUTex = GLES20.glGetUniformLocation(p, "uTex")
+        blUTexel = GLES20.glGetUniformLocation(p, "uTexel")
+        android.util.Log.i("MiVBGSpike", "blurProgram=$p texelLoc=$blUTexel")
+    }
+
+    /** Blends the camera frame with the uploaded effect image. */
+    private fun buildImageProgram() {
+        val fragment = """
+            #extension GL_OES_EGL_image_external : require
+            precision mediump float;
+            varying vec2 vTex;
+            uniform samplerExternalOES uTex;
+            uniform sampler2D uImg;
+            void main() {
+                vec4 c = texture2D(uTex, vTex);
+                vec4 i = texture2D(uImg, vTex);
+                gl_FragColor = mix(c, i, 0.5);
+            }
+        """.trimIndent()
+        val p = linkProgram(fragment)
+        imgProgram = p
+        imAPos = GLES20.glGetAttribLocation(p, "aPos")
+        imATex = GLES20.glGetAttribLocation(p, "aTex")
+        imUMvp = GLES20.glGetUniformLocation(p, "uMvp")
+        imUTex = GLES20.glGetUniformLocation(p, "uTex")
+        imUImg = GLES20.glGetUniformLocation(p, "uImg")
+        android.util.Log.i("MiVBGSpike", "imageProgram=$p imgLoc=$imUImg")
     }
 
     fun release() {

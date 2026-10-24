@@ -24,6 +24,11 @@ class SpikeSegmenterBenchmark(
 ) {
     private var mediapipe: ImageSegmenter? = null
 
+    /** Last category mask, kept so the caller can dump an overlay after a run. */
+    @Volatile
+    var lastCategoryMask: com.google.mediapipe.framework.image.MPImage? = null
+        private set
+
     /** Result of one engine run. */
     data class EngineResult(
         val name: String,
@@ -98,6 +103,15 @@ class SpikeSegmenterBenchmark(
             val result: ImageSegmenterResult = segmenter.segment(image)
             val elapsed = (System.nanoTime() - start) / 1000
             val mask = result.categoryMask().orElse(null)
+            lastCategoryMask = mask
+            if (mask != null) {
+                val props = mask.containedImageProperties
+                    .joinToString { "fmt=${it.imageFormat} stor=${it.storageType}" }
+                android.util.Log.i(
+                    "MiVBGSpike",
+                    "MP categoryMask w=${mask.width} h=${mask.height} props=[$props]",
+                )
+            }
             val w = mask?.width ?: 0
             val h = mask?.height ?: 0
             android.util.Log.i("MiVBGSpike", "mediapipe ${elapsed}us mask=${w}x$h")
@@ -110,5 +124,7 @@ class SpikeSegmenterBenchmark(
 
     fun release() {
         mediapipe?.close()
+        mediapipe = null
+        lastCategoryMask = null
     }
 }
