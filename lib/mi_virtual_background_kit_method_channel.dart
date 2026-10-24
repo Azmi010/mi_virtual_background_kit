@@ -19,6 +19,7 @@ class MethodChannelMiVirtualBackgroundKit extends MiVirtualBackgroundKitPlatform
 
   // --- Spike T0.4 (temporary) ---
 
+  @override
   Future<bool> spikeAttach(String trackId) async {
     return await methodChannel.invokeMethod<bool>(
           'spikeAttach',
@@ -27,34 +28,41 @@ class MethodChannelMiVirtualBackgroundKit extends MiVirtualBackgroundKitPlatform
         false;
   }
 
+  @override
   Future<int> spikeFrameCount() async {
     return await methodChannel.invokeMethod<int>('spikeFrameCount') ?? 0;
   }
 
+  @override
   Future<Map<dynamic, dynamic>> spikeInfo() async {
     return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeInfo') ??
         <dynamic, dynamic>{};
   }
 
+  @override
   Future<bool> spikeBenchmarkReadback() async {
     return await methodChannel.invokeMethod<bool>('spikeBenchmarkReadback') ?? false;
   }
 
+  @override
   Future<Map<dynamic, dynamic>> spikeSegmentBenchmark() async {
     return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeSegmentBenchmark') ??
         <dynamic, dynamic>{};
   }
 
+  @override
   Future<Map<dynamic, dynamic>> spikeCompositeBench() async {
     return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeCompositeBench') ??
         <dynamic, dynamic>{};
   }
 
+  @override
   Future<Map<dynamic, dynamic>> spikeReadback() async {
     return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeReadback') ??
         <dynamic, dynamic>{};
   }
 
+  @override
   Future<bool> spikeEnableGpu(bool enabled) async {
     return await methodChannel.invokeMethod<bool>(
           'spikeEnableGpu',
@@ -63,11 +71,13 @@ class MethodChannelMiVirtualBackgroundKit extends MiVirtualBackgroundKitPlatform
         false;
   }
 
+  @override
   Future<Map<dynamic, dynamic>> spikeGpuInfo() async {
     return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeGpuInfo') ??
         <dynamic, dynamic>{};
   }
 
+  @override
   Future<bool> spikeSetEnabled(bool enabled) async {
     return await methodChannel.invokeMethod<bool>(
           'spikeSetEnabled',
@@ -76,6 +86,7 @@ class MethodChannelMiVirtualBackgroundKit extends MiVirtualBackgroundKitPlatform
         false;
   }
 
+  @override
   Future<bool> spikeDetach(String trackId) async {
     return await methodChannel.invokeMethod<bool>(
           'spikeDetach',

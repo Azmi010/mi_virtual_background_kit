@@ -68,7 +68,7 @@ class _SpikePageState extends State<SpikePage> {
       setState(() => _status = 'no track');
       return;
     }
-    final ok = await _kit.spikeAttach(track.id);
+    final ok = await _kit.spikeAttach(track.id!);
     setState(() {
       _spiked = ok;
       _status = ok ? 'spike attached to ${track.id}' : 'spike attach FAILED';
@@ -78,7 +78,7 @@ class _SpikePageState extends State<SpikePage> {
   Future<void> _detachSpike() async {
     final track = _stream?.getVideoTracks().first;
     if (track == null) return;
-    final ok = await _kit.spikeDetach(track.id);
+    final ok = await _kit.spikeDetach(track.id!);
     setState(() {
       _spiked = false;
       _status = ok ? 'spike detached' : 'spike detach FAILED';
