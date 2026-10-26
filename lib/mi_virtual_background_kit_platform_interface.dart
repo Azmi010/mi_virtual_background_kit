@@ -1,6 +1,7 @@
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'mi_virtual_background_kit_method_channel.dart';
+import 'src/status/status.dart';
 
 abstract class MiVirtualBackgroundKitPlatform extends PlatformInterface {
   /// Constructs a MiVirtualBackgroundKitPlatform.
@@ -26,6 +27,38 @@ abstract class MiVirtualBackgroundKitPlatform extends PlatformInterface {
 
   Future<String?> getPlatformVersion() {
     throw UnimplementedError('platformVersion() has not been implemented.');
+  }
+
+  // --- Public API (Fase 2) ---
+
+  /// Whether this device/OS can run background processing.
+  Future<bool> isSupported() {
+    throw UnimplementedError('isSupported() has not been implemented.');
+  }
+
+  /// Attaches the processor to the camera track with the given [trackId].
+  Future<void> attach(String trackId) {
+    throw UnimplementedError('attach() has not been implemented.');
+  }
+
+  /// Applies [effect] (already serialized via `toMap()`).
+  Future<void> setEffect(Map<String, Object?> effect) {
+    throw UnimplementedError('setEffect() has not been implemented.');
+  }
+
+  /// Detaches the processor from the current track.
+  Future<void> detach() {
+    throw UnimplementedError('detach() has not been implemented.');
+  }
+
+  /// Releases native resources.
+  Future<void> dispose() {
+    throw UnimplementedError('dispose() has not been implemented.');
+  }
+
+  /// Status updates from the native processor.
+  Stream<ProcessorStatus> get statusStream {
+    throw UnimplementedError('statusStream has not been implemented.');
   }
 
   // --- Spike T0.4 (temporary) ---

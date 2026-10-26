@@ -28,7 +28,8 @@ void main() {
       const e = ModelLoadFailedException();
       expect(e.code, 'modelLoadFailed');
       expect(e.message, isNull);
-      expect(e.toString(), 'ModelLoadFailedException(modelLoadFailed): no message');
+      expect(e.toString(),
+          'ModelLoadFailedException(modelLoadFailed): no message');
     });
 
     test('InvalidTrackException', () {
