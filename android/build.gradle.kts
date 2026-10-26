@@ -51,6 +51,9 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            // android.util.Log etc. are stubs on the JVM; return defaults
+            // instead of throwing in unit tests.
+            isReturnDefaultValues = true
             all {
                 it.useJUnitPlatform()
 

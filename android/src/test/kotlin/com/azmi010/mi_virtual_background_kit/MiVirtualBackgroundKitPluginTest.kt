@@ -24,4 +24,30 @@ internal class MiVirtualBackgroundKitPluginTest {
 
         Mockito.verify(mockResult).success("Android " + android.os.Build.VERSION.RELEASE)
     }
+
+    @Test
+    fun onMethodCall_attachWithoutTrackId_errorsInvalidTrack() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+
+        val call = MethodCall("attach", null)
+        val mockResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(call, mockResult)
+
+        Mockito.verify(mockResult).error(
+            Mockito.eq("invalidTrack"),
+            Mockito.any(),
+            Mockito.isNull(),
+        )
+    }
+
+    @Test
+    fun onMethodCall_detachWithoutAttach_isIdempotentSuccess() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+
+        val call = MethodCall("detach", null)
+        val mockResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(call, mockResult)
+
+        Mockito.verify(mockResult).success(null)
+    }
 }

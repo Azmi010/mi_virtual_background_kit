@@ -1,5 +1,8 @@
 package com.azmi010.mi_virtual_background_kit
 
+import com.azmi010.mi_virtual_background_kit.processor.FrameProcessor
+import com.azmi010.mi_virtual_background_kit.processor.attachFrameProcessor
+import com.azmi010.mi_virtual_background_kit.processor.detachFrameProcessor
 import com.azmi010.mi_virtual_background_kit.spike.SpikeFrameProcessor
 import com.azmi010.mi_virtual_background_kit.spike.SpikeGpuCompositor
 import com.azmi010.mi_virtual_background_kit.spike.SpikeMLKitBenchmark
@@ -25,6 +28,12 @@ class MiVirtualBackgroundKitPlugin :
 
     private var spikeProcessor: SpikeFrameProcessor? = null
 
+    // Production processor (T3.2). ADR 0001 §1: the LocalVideoTrack object
+    // is cached here on attach — Dart's stream.getMediaTracks() replaces the
+    // flutter_webrtc registry entry, so a re-lookup by id attaches to nothing.
+    private var attachedTrack: com.cloudwebrtc.webrtc.video.LocalVideoTrack? = null
+    private var frameProcessor: FrameProcessor? = null
+
     private var appContext: android.content.Context? = null
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
@@ -39,6 +48,31 @@ class MiVirtualBackgroundKitPlugin :
     ) {
         when (call.method) {
             "getPlatformVersion" -> result.success("Android ${android.os.Build.VERSION.RELEASE}")
+            "attach" -> {
+                val trackId = call.argument<String>("trackId")
+                if (trackId.isNullOrBlank()) {
+                    result.error("invalidTrack", "trackId is required", null)
+                    return
+                }
+                // Re-attach replaces: never stack processors on one track.
+                releaseFrameProcessor()
+                val processor = FrameProcessor()
+                val track = attachFrameProcessor(trackId, processor)
+                if (track == null) {
+                    result.error("invalidTrack", "no local video track: $trackId", null)
+                    return
+                }
+                attachedTrack = track
+                frameProcessor = processor
+                android.util.Log.i("MiVBG", "attached processor to $trackId")
+                result.success(null)
+            }
+            "detach" -> {
+                val had = frameProcessor != null
+                releaseFrameProcessor()
+                android.util.Log.i("MiVBG", "detached processor (wasAttached=$had)")
+                result.success(null)
+            }
             "spikeAttach" -> {
                 val trackId = call.argument<String>("trackId")
                 if (trackId == null) {
@@ -359,7 +393,15 @@ class MiVirtualBackgroundKitPlugin :
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        releaseFrameProcessor()
         channel.setMethodCallHandler(null)
+    }
+
+    /** Detaches the production processor from its cached track; idempotent. */
+    private fun releaseFrameProcessor() {
+        detachFrameProcessor(attachedTrack, frameProcessor)
+        attachedTrack = null
+        frameProcessor = null
     }
 
     /** Process CPU ticks (utime+stime), CLK_TCK = 100 on Android. */

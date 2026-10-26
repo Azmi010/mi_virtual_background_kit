@@ -66,20 +66,30 @@ class _SpikePageState extends State<SpikePage> {
       _renderer.srcObject = stream;
       setState(() => _status = 'track=${track.id}');
 
-      final ok = await _kit.spikeAttach(track.id!);
-      setState(() => _spiked = ok);
-      debugPrint('SPIKE attach=$ok trackId=${track.id}');
-
-      if (!Platform.isAndroid) {
-        debugPrint('SPIKE gpu path is Android only, skipping');
+      const prodMode = bool.fromEnvironment('PROD_ATTACH');
+      debugPrint('PROD_ATTACH=$prodMode');
+      if (prodMode) {
+        // T3.2 verification mode: production processor only, no spike chain.
+        await _kit.attach(track);
+        debugPrint('PROD attached track=${track.id}');
       } else {
-        final gpuOk = await _kit.spikeEnableGpu(true);
-        debugPrint('SPIKE gpuEnabled=$gpuOk');
+        final ok = await _kit.spikeAttach(track.id!);
+        setState(() => _spiked = ok);
+        debugPrint('SPIKE attach=$ok trackId=${track.id}');
+
+        if (!Platform.isAndroid) {
+          debugPrint('SPIKE gpu path is Android only, skipping');
+        } else {
+          final gpuOk = await _kit.spikeEnableGpu(true);
+          debugPrint('SPIKE gpuEnabled=$gpuOk');
+        }
       }
 
       _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateHud());
       Future<void>.delayed(const Duration(seconds: 1), () async {
-        if (_benchmarked) return;
+        // bare bool.fromEnvironment does not read the environment (always
+        // false); reuse the const above.
+        if (_benchmarked || prodMode) return;
         _benchmarked = true;
         if (Platform.isAndroid) {
           final rb = await _kit.spikeReadback();
