@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'mi_virtual_background_kit_platform_interface.dart';
+import 'src/status/status.dart';
 
 /// An implementation of [MiVirtualBackgroundKitPlatform] that uses method channels.
 class MethodChannelMiVirtualBackgroundKit
@@ -10,12 +11,87 @@ class MethodChannelMiVirtualBackgroundKit
   @visibleForTesting
   final methodChannel = const MethodChannel('mi_virtual_background_kit');
 
+  /// The event channel streaming processor status updates.
+  @visibleForTesting
+  final eventChannel = const EventChannel('mi_virtual_background_kit/status');
+
   @override
-  Future<String?> getPlatformVersion() async {
-    final version = await methodChannel.invokeMethod<String>(
-      'getPlatformVersion',
+  Future<bool> isSupported() async {
+    final result = await _guard(
+      () => methodChannel.invokeMethod<bool>('isSupported'),
     );
-    return version;
+    return result ?? false;
+  }
+
+  @override
+  Future<void> attach(String trackId) async {
+    await _guard(
+      () => methodChannel.invokeMethod<void>(
+        'attach',
+        <String, Object?>{'trackId': trackId},
+      ),
+    );
+  }
+
+  @override
+  Future<void> setEffect(Map<String, Object?> effect) async {
+    await _guard(
+      () => methodChannel.invokeMethod<void>('setEffect', effect),
+    );
+  }
+
+  @override
+  Future<void> detach() async {
+    await _guard(() => methodChannel.invokeMethod<void>('detach'));
+  }
+
+  @override
+  Future<void> dispose() async {
+    await _guard(() => methodChannel.invokeMethod<void>('dispose'));
+  }
+
+  @override
+  Stream<ProcessorStatus> get statusStream {
+    return eventChannel.receiveBroadcastStream().map(_statusFromEvent);
+  }
+
+  ProcessorStatus _statusFromEvent(dynamic event) {
+    switch (event) {
+      case 'initializing':
+        return ProcessorStatus.initializing;
+      case 'active':
+        return ProcessorStatus.active;
+      case 'error':
+        return ProcessorStatus.error;
+      default:
+        return ProcessorStatus.idle;
+    }
+  }
+
+  /// Invokes [call], mapping native error codes (FR-08) to typed exceptions.
+  Future<T?> _guard<T>(Future<T?> Function() call) async {
+    try {
+      return await call();
+    } on PlatformException catch (e) {
+      final mapped = _mapErrorCode(e);
+      if (mapped != null) throw mapped;
+      rethrow;
+    }
+  }
+
+  BackgroundException? _mapErrorCode(PlatformException e) {
+    switch (e.code) {
+      case 'unsupportedPlatform':
+        return UnsupportedPlatformException(e.message);
+      case 'modelLoadFailed':
+        return ModelLoadFailedException(e.message);
+      case 'invalidTrack':
+        return InvalidTrackException(e.message);
+      case 'invalidImage':
+        return InvalidImageException(e.message);
+      default:
+        return null;
+    }
   }
 
   // --- Spike T0.4 (temporary) ---
