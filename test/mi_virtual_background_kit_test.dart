@@ -55,37 +55,70 @@ class MockPlatform
   Future<String?> getPlatformVersion() async => '42';
 
   @override
-  Future<bool> spikeAttach(String trackId) async => true;
+  Future<bool> spikeAttach(String trackId) async {
+    calls.add('spikeAttach:$trackId');
+    return true;
+  }
 
   @override
-  Future<int> spikeFrameCount() async => 0;
+  Future<int> spikeFrameCount() async {
+    calls.add('spikeFrameCount');
+    return 0;
+  }
 
   @override
-  Future<Map<dynamic, dynamic>> spikeInfo() async => {};
+  Future<Map<dynamic, dynamic>> spikeInfo() async {
+    calls.add('spikeInfo');
+    return {};
+  }
 
   @override
-  Future<bool> spikeBenchmarkReadback() async => true;
+  Future<bool> spikeBenchmarkReadback() async {
+    calls.add('spikeBenchmarkReadback');
+    return true;
+  }
 
   @override
-  Future<Map<dynamic, dynamic>> spikeSegmentBenchmark() async => {};
+  Future<Map<dynamic, dynamic>> spikeSegmentBenchmark() async {
+    calls.add('spikeSegmentBenchmark');
+    return {};
+  }
 
   @override
-  Future<Map<dynamic, dynamic>> spikeCompositeBench() async => {};
+  Future<Map<dynamic, dynamic>> spikeCompositeBench() async {
+    calls.add('spikeCompositeBench');
+    return {};
+  }
 
   @override
-  Future<Map<dynamic, dynamic>> spikeReadback() async => {};
+  Future<Map<dynamic, dynamic>> spikeReadback() async {
+    calls.add('spikeReadback');
+    return {};
+  }
 
   @override
-  Future<bool> spikeEnableGpu(bool enabled) async => true;
+  Future<bool> spikeEnableGpu(bool enabled) async {
+    calls.add('spikeEnableGpu:$enabled');
+    return true;
+  }
 
   @override
-  Future<Map<dynamic, dynamic>> spikeGpuInfo() async => {};
+  Future<Map<dynamic, dynamic>> spikeGpuInfo() async {
+    calls.add('spikeGpuInfo');
+    return {};
+  }
 
   @override
-  Future<bool> spikeSetEnabled(bool enabled) async => true;
+  Future<bool> spikeSetEnabled(bool enabled) async {
+    calls.add('spikeSetEnabled:$enabled');
+    return true;
+  }
 
   @override
-  Future<bool> spikeDetach(String trackId) async => true;
+  Future<bool> spikeDetach(String trackId) async {
+    calls.add('spikeDetach:$trackId');
+    return true;
+  }
 }
 
 class FakeTrack extends Fake implements MediaStreamTrack {
@@ -296,6 +329,29 @@ void main() {
         ProcessorStatus.active,
       ]);
       await sub.cancel();
+    });
+  });
+
+  group('spike delegates (temporary)', () {
+    test('each spike method hits platform', () async {
+      await kit.spikeAttach('t');
+      await kit.spikeFrameCount();
+      await kit.spikeInfo();
+      await kit.spikeBenchmarkReadback();
+      await kit.spikeSegmentBenchmark();
+      await kit.spikeCompositeBench();
+      await kit.spikeReadback();
+      await kit.spikeEnableGpu(true);
+      await kit.spikeGpuInfo();
+      await kit.spikeSetEnabled(true);
+      await kit.spikeDetach('t');
+      expect(
+        mock.calls,
+        containsAll(<String>[
+          'spikeAttach:t',
+          'spikeDetach:t',
+        ]),
+      );
     });
   });
 }
