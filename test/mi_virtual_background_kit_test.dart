@@ -45,15 +45,19 @@ class MockMiVirtualBackgroundKitPlatform
 }
 
 void main() {
-  final MiVirtualBackgroundKitPlatform initialPlatform = MiVirtualBackgroundKitPlatform.instance;
+  final MiVirtualBackgroundKitPlatform initialPlatform =
+      MiVirtualBackgroundKitPlatform.instance;
 
   test('$MethodChannelMiVirtualBackgroundKit is the default instance', () {
-    expect(initialPlatform, isInstanceOf<MethodChannelMiVirtualBackgroundKit>());
+    expect(
+        initialPlatform, isInstanceOf<MethodChannelMiVirtualBackgroundKit>());
   });
 
   test('getPlatformVersion', () async {
-    MiVirtualBackgroundKit miVirtualBackgroundKitPlugin = MiVirtualBackgroundKit();
-    MockMiVirtualBackgroundKitPlatform fakePlatform = MockMiVirtualBackgroundKitPlatform();
+    MiVirtualBackgroundKit miVirtualBackgroundKitPlugin =
+        MiVirtualBackgroundKit();
+    MockMiVirtualBackgroundKitPlatform fakePlatform =
+        MockMiVirtualBackgroundKitPlatform();
     MiVirtualBackgroundKitPlatform.instance = fakePlatform;
 
     expect(await miVirtualBackgroundKitPlugin.getPlatformVersion(), '42');

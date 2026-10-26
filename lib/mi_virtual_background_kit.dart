@@ -10,7 +10,8 @@ class MiVirtualBackgroundKit {
   Future<bool> spikeAttach(String trackId) =>
       MiVirtualBackgroundKitPlatform.instance.spikeAttach(trackId);
 
-  Future<int> spikeFrameCount() => MiVirtualBackgroundKitPlatform.instance.spikeFrameCount();
+  Future<int> spikeFrameCount() =>
+      MiVirtualBackgroundKitPlatform.instance.spikeFrameCount();
 
   Future<Map<dynamic, dynamic>> spikeInfo() =>
       MiVirtualBackgroundKitPlatform.instance.spikeInfo();

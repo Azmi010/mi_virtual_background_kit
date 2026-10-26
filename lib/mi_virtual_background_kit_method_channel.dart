@@ -4,7 +4,8 @@ import 'package:flutter/services.dart';
 import 'mi_virtual_background_kit_platform_interface.dart';
 
 /// An implementation of [MiVirtualBackgroundKitPlatform] that uses method channels.
-class MethodChannelMiVirtualBackgroundKit extends MiVirtualBackgroundKitPlatform {
+class MethodChannelMiVirtualBackgroundKit
+    extends MiVirtualBackgroundKitPlatform {
   /// The method channel used to interact with the native platform.
   @visibleForTesting
   final methodChannel = const MethodChannel('mi_virtual_background_kit');
@@ -41,24 +42,28 @@ class MethodChannelMiVirtualBackgroundKit extends MiVirtualBackgroundKitPlatform
 
   @override
   Future<bool> spikeBenchmarkReadback() async {
-    return await methodChannel.invokeMethod<bool>('spikeBenchmarkReadback') ?? false;
+    return await methodChannel.invokeMethod<bool>('spikeBenchmarkReadback') ??
+        false;
   }
 
   @override
   Future<Map<dynamic, dynamic>> spikeSegmentBenchmark() async {
-    return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeSegmentBenchmark') ??
+    return await methodChannel
+            .invokeMapMethod<dynamic, dynamic>('spikeSegmentBenchmark') ??
         <dynamic, dynamic>{};
   }
 
   @override
   Future<Map<dynamic, dynamic>> spikeCompositeBench() async {
-    return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeCompositeBench') ??
+    return await methodChannel
+            .invokeMapMethod<dynamic, dynamic>('spikeCompositeBench') ??
         <dynamic, dynamic>{};
   }
 
   @override
   Future<Map<dynamic, dynamic>> spikeReadback() async {
-    return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeReadback') ??
+    return await methodChannel
+            .invokeMapMethod<dynamic, dynamic>('spikeReadback') ??
         <dynamic, dynamic>{};
   }
 
@@ -73,7 +78,8 @@ class MethodChannelMiVirtualBackgroundKit extends MiVirtualBackgroundKitPlatform
 
   @override
   Future<Map<dynamic, dynamic>> spikeGpuInfo() async {
-    return await methodChannel.invokeMapMethod<dynamic, dynamic>('spikeGpuInfo') ??
+    return await methodChannel
+            .invokeMapMethod<dynamic, dynamic>('spikeGpuInfo') ??
         <dynamic, dynamic>{};
   }
 

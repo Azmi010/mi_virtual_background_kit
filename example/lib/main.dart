@@ -16,9 +16,7 @@ class SpikeApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: const SpikePage(),
-    );
+    return MaterialApp(home: const SpikePage());
   }
 }
 
@@ -54,17 +52,15 @@ class _SpikePageState extends State<SpikePage> {
 
   Future<void> _start() async {
     try {
-      final stream = await navigator.mediaDevices.getUserMedia(
-        const {
-          'audio': false,
-          'video': {
-            'facingMode': 'user',
-            'width': 640,
-            'height': 480,
-            'frameRate': 30,
-          },
+      final stream = await navigator.mediaDevices.getUserMedia(const {
+        'audio': false,
+        'video': {
+          'facingMode': 'user',
+          'width': 640,
+          'height': 480,
+          'frameRate': 30,
         },
-      );
+      });
       _stream = stream;
       final track = stream.getVideoTracks().first;
       _renderer.srcObject = stream;
@@ -118,17 +114,15 @@ class _SpikePageState extends State<SpikePage> {
     _stream?.getTracks().forEach((t) => t.stop());
     await _stream?.dispose();
 
-    final s2 = await navigator.mediaDevices.getUserMedia(
-      const {
-        'audio': false,
-        'video': {
-          'facingMode': 'user',
-          'width': 1280,
-          'height': 720,
-          'frameRate': 30,
-        },
+    final s2 = await navigator.mediaDevices.getUserMedia(const {
+      'audio': false,
+      'video': {
+        'facingMode': 'user',
+        'width': 1280,
+        'height': 720,
+        'frameRate': 30,
       },
-    );
+    });
     _stream = s2;
     _renderer.srcObject = s2;
     final t2 = s2.getVideoTracks().first;
@@ -146,7 +140,9 @@ class _SpikePageState extends State<SpikePage> {
   Future<void> _updateHud() async {
     final info = await _kit.spikeInfo();
     final n = (info['frames'] as int?) ?? 0;
-    final gpu = Platform.isAndroid ? await _kit.spikeGpuInfo() : <dynamic, dynamic>{};
+    final gpu = Platform.isAndroid
+        ? await _kit.spikeGpuInfo()
+        : <dynamic, dynamic>{};
     setState(() {
       _fps = n - _lastCount;
       _lastCount = n;
@@ -194,14 +190,20 @@ class _SpikePageState extends State<SpikePage> {
             child: Column(
               children: [
                 Text(_status, style: const TextStyle(fontSize: 11)),
-                Text('frames: $_frames  fps: $_fps  transform: $_transformOn',
-                    style: const TextStyle(fontSize: 13)),
-                Text('gpu: ${_gpuMicros}us  n=$_gpuCount  type=$_gpuType',
-                    style: const TextStyle(fontSize: 13)),
+                Text(
+                  'frames: $_frames  fps: $_fps  transform: $_transformOn',
+                  style: const TextStyle(fontSize: 13),
+                ),
+                Text(
+                  'gpu: ${_gpuMicros}us  n=$_gpuCount  type=$_gpuType',
+                  style: const TextStyle(fontSize: 13),
+                ),
                 const SizedBox(height: 8),
                 ElevatedButton(
                   onPressed: _spiked ? _toggleTransform : null,
-                  child: Text(_transformOn ? 'Disable transform' : 'Enable transform'),
+                  child: Text(
+                    _transformOn ? 'Disable transform' : 'Enable transform',
+                  ),
                 ),
               ],
             ),

@@ -1,8 +1,7 @@
 name: mi_virtual_background_kit
 description: >-
-  Flutter plugin for applying real-time virtual background effects (blur,
-  image, solid color) to local camera tracks in flutter_webrtc based video
-  call apps. Fully on-device, no network, no telemetry.
+  Real-time virtual background (blur, image, solid color) for flutter_webrtc
+  camera tracks. Fully on-device, no network, no telemetry.
 version: 0.1.0
 repository: https://github.com/Azmi010/mi_virtual_background_kit
 issue_tracker: https://github.com/Azmi010/mi_virtual_background_kit/issues
@@ -12,7 +11,6 @@ topics:
   - virtual-background
   - blur
   - camera
-  - videoconference
 
 environment:
   sdk: ^3.5.0

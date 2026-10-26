@@ -8,7 +8,8 @@ abstract class MiVirtualBackgroundKitPlatform extends PlatformInterface {
 
   static final Object _token = Object();
 
-  static MiVirtualBackgroundKitPlatform _instance = MethodChannelMiVirtualBackgroundKit();
+  static MiVirtualBackgroundKitPlatform _instance =
+      MethodChannelMiVirtualBackgroundKit();
 
   /// The default instance of [MiVirtualBackgroundKitPlatform] to use.
   ///
@@ -42,11 +43,13 @@ abstract class MiVirtualBackgroundKitPlatform extends PlatformInterface {
   }
 
   Future<bool> spikeBenchmarkReadback() {
-    throw UnimplementedError('spikeBenchmarkReadback() has not been implemented.');
+    throw UnimplementedError(
+        'spikeBenchmarkReadback() has not been implemented.');
   }
 
   Future<Map<dynamic, dynamic>> spikeSegmentBenchmark() {
-    throw UnimplementedError('spikeSegmentBenchmark() has not been implemented.');
+    throw UnimplementedError(
+        'spikeSegmentBenchmark() has not been implemented.');
   }
 
   Future<Map<dynamic, dynamic>> spikeCompositeBench() {
