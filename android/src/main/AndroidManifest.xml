@@ -1,2 +1,22 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!--
+      MediaPipe links Google's data transport runtime (optional logging) and
+      schedules its JobService / alarm receiver by default. The kit never uses
+      the network (PRD G4), so both schedulers are disabled here: scheduling
+      still validates (disabled components match), execution never happens.
+
+      Verified no network by design; empirical check in T3.1 (logcat +
+      dumpsys jobscheduler on emulator, see TASKS.md).
+    -->
+    <application>
+        <service
+            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
+            android:enabled="false"
+            tools:replace="android:enabled" />
+        <receiver
+            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver"
+            android:enabled="false"
+            tools:replace="android:enabled" />
+    </application>
 </manifest>

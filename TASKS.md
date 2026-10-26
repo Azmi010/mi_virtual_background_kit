@@ -57,7 +57,8 @@ Repo dibuat di awal fase ini supaya spike dan ADR punya tempat. Kode spike diker
 
 ## Fase 3 — Android native (M2)
 
-- [ ] T3.1 Integrasikan mesin segmentasi terpilih dan pemuatan model. Selesai: mask orang dihasilkan untuk satu frame uji.
+- [x] T3.1 Integrasikan mesin segmentasi terpilih dan pemuatan model. Selesai: mask orang dihasilkan untuk satu frame uji.
+  - Hasil: `Segmenter` (`android/.../segmentation/Segmenter.kt`) — MediaPipe ImageSegmenter, CPU delegate, model asset `selfie_segmenter.tflite`, mode IMAGE; gagal load → `SegmentationException` (map ke FR-08 `modelLoadFailed` di T3.6). `MaskCodec` men-normalisasi kategori mask ke alpha (255=orang): UINT8 `person=0` / FLOAT32 `>=0.5`, buffer output dipakai ulang — 5 unit test JVM. Uji frame: overlay tint `docs/spike-t06/phys_mp.png` dibalik ke warna asli → `example/android/app/src/androidTest/assets/person_frame.png`. Instrumentation test `SegmenterInstrumentationTest` **lulus di SM-A135F (P1, Android 14)**: model load + mask orang dari 1 frame. Terkait ADR 0001 risiko `datatransport`: scheduler dimatikan di manifest plugin (`JobInfoSchedulerService` + `AlarmManagerSchedulerBroadcastReceiver` `android:enabled="false"`) — verifikasi: merged manifest APK benar, `dumpsys jobscheduler` 0 job untuk package kit, logcat tanpa baris transport selama test.
 - [ ] T3.2 Pasang frame processor pada track `flutter_webrtc` sesuai hasil T0.4. Selesai: frame melewati prosesor dan keluar ke preview.
 - [ ] T3.3 Implementasikan komposit blur. Selesai: blur terlihat benar dengan tepi wajar pada preview.
 - [ ] T3.4 Implementasikan komposit gambar (cover dan contain) dan warna solid. Selesai: tampil benar pada orientasi portrait dan landscape.

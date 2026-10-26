@@ -27,6 +27,8 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -46,4 +48,11 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Versions must match androidx.test pinned by the Flutter engine on
+    // debugRuntimeClasspath (consistent resolution rejects anything else).
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test:runner:1.3.0")
 }
