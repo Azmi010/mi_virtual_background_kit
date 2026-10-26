@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import 'mi_virtual_background_kit_platform_interface.dart';
@@ -42,8 +44,12 @@ class MiVirtualBackgroundKit {
 
   /// Applies [effect] to subsequent frames. Idempotent; does not restart the
   /// camera track (FR-05).
+  ///
+  /// Throws [ArgumentError] if a blur radius is out of range.
+  /// Throws [InvalidImageException] if an image source is empty.
   Future<void> setEffect(VirtualBackgroundEffect effect) async {
     _ensureNotDisposed();
+    _validateEffect(effect);
     await _platform.setEffect(effect.toMap());
   }
 
@@ -68,6 +74,35 @@ class MiVirtualBackgroundKit {
   void _ensureNotDisposed() {
     if (_disposed) {
       throw StateError('MiVirtualBackgroundKit has been disposed');
+    }
+  }
+
+  /// Validates [effect] before it reaches the platform channel.
+  void _validateEffect(VirtualBackgroundEffect effect) {
+    switch (effect) {
+      case BlurEffect(:final radius):
+        if (radius.isNaN || radius.isInfinite || radius <= 0 || radius > 100) {
+          throw ArgumentError.value(
+            radius,
+            'radius',
+            'blur radius must be in (0, 100]',
+          );
+        }
+      case ImageEffect(:final sourceType, :final data):
+        switch (sourceType) {
+          case ImageSourceType.asset:
+          case ImageSourceType.file:
+            if ((data as String).trim().isEmpty) {
+              throw const InvalidImageException('image path is empty');
+            }
+          case ImageSourceType.bytes:
+            if ((data as Uint8List).isEmpty) {
+              throw const InvalidImageException('image bytes are empty');
+            }
+        }
+      case ColorEffect():
+      case NoEffect():
+        break;
     }
   }
 

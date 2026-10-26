@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -169,6 +170,63 @@ void main() {
     test('sends NoEffect as bypass', () async {
       await kit.setEffect(const NoEffect());
       expect(mock.effects.single['type'], 'none');
+    });
+
+    test('rejects blur radius <= 0 without touching platform', () async {
+      await expectLater(
+        kit.setEffect(const BlurEffect(radius: 0)),
+        throwsA(isA<ArgumentError>()),
+      );
+      await expectLater(
+        kit.setEffect(const BlurEffect(radius: -5)),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(mock.effects, isEmpty);
+    });
+
+    test('rejects blur radius > 100 or non-finite', () async {
+      await expectLater(
+        kit.setEffect(const BlurEffect(radius: 101)),
+        throwsA(isA<ArgumentError>()),
+      );
+      await expectLater(
+        kit.setEffect(const BlurEffect(radius: double.infinity)),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(mock.effects, isEmpty);
+    });
+
+    test('rejects empty asset path without touching platform', () async {
+      await expectLater(
+        kit.setEffect(const ImageEffect.asset('')),
+        throwsA(isA<InvalidImageException>()),
+      );
+      await expectLater(
+        kit.setEffect(const ImageEffect.asset('   ')),
+        throwsA(isA<InvalidImageException>()),
+      );
+      expect(mock.effects, isEmpty);
+    });
+
+    test('rejects empty file path without touching platform', () async {
+      await expectLater(
+        kit.setEffect(const ImageEffect.file('')),
+        throwsA(isA<InvalidImageException>()),
+      );
+      expect(mock.effects, isEmpty);
+    });
+
+    test('rejects empty bytes without touching platform', () async {
+      await expectLater(
+        kit.setEffect(ImageEffect.bytes(Uint8List(0))),
+        throwsA(isA<InvalidImageException>()),
+      );
+      expect(mock.effects, isEmpty);
+    });
+
+    test('accepts valid boundary blur radius', () async {
+      await kit.setEffect(const BlurEffect(radius: 100));
+      expect(mock.effects.single['radius'], 100.0);
     });
   });
 
