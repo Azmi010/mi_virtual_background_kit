@@ -29,11 +29,16 @@ Repo dibuat di awal fase ini supaya spike dan ADR punya tempat. Kode spike diker
 
 ## Fase 1 — Konfigurasi repo dan CI (M1)
 
-- [ ] T1.1 Rapikan `pubspec.yaml`: description 60–180 karakter, `repository`, `issue_tracker`, `topics`, rentang SDK, dan rentang `flutter_webrtc`. Selesai: `dart pub publish --dry-run` tidak mengeluhkan metadata.
-- [ ] T1.2 Atur lint (`analysis_options.yaml`) dan format. Selesai: `flutter analyze` dan `dart format --set-exit-if-changed .` lolos.
-- [ ] T1.3 Siapkan CI GitHub Actions: analyze, test, dan build example Android/iOS. Selesai: pipeline hijau di PR pertama.
-- [ ] T1.4 Siapkan template issue, template PR, `CONTRIBUTING.md`, dan `CODE_OF_CONDUCT.md`. Selesai: file ada di repo.
-- [ ] T1.5 Siapkan `CHANGELOG.md` dengan entri `0.1.0` kosong dan `README.md` kerangka. Selesai: kedua file ada.
+- [x] T1.1 Rapikan `pubspec.yaml`: description 60–180 karakter, `repository`, `issue_tracker`, `topics`, rentang SDK, dan rentang `flutter_webrtc`. Selesai: `dart pub publish --dry-run` tidak mengeluhkan metadata.
+  - Hasil: description dipendekkan (~119 char), topics 6→5 (batas pub.dev). Dry-run metadata bersih. Warning tersisa non-metadata: `docs/` vs `doc/` (tunda ke Fase 8).
+- [x] T1.2 Atur lint (`analysis_options.yaml`) dan format. Selesai: `flutter analyze` dan `dart format --set-exit-if-changed .` lolos.
+  - Hasil: `analysis_options.yaml` sudah benar (tidak diubah). 6 file Dart diformat ulang; spike folder tak tersentuh. Analyze bersih, format exit 0.
+- [x] T1.3 Siapkan CI GitHub Actions: analyze, test, dan build example Android/iOS. Selesai: pipeline hijau di PR pertama.
+  - Hasil: `.github/workflows/ci.yml` — 3 job: analyze-test (ubuntu), android build apk (ubuntu, JDK 17), ios build (macos + `tool/link_example_build.sh` untuk SPM bug Flutter <3.48). `example/test/widget_test.dart` placeholder (tanpa `main()`) dihapus. Pipeline hijau di push `696e985`.
+- [x] T1.4 Siapkan template issue, template PR, `CONTRIBUTING.md`, dan `CODE_OF_CONDUCT.md`. Selesai: file ada di repo.
+  - Hasil: bug_report + feature_request templates, PR template dengan checklist analyze/format/test, CONTRIBUTING.md, CODE_OF_CONDUCT.md (Contributor Covenant 2.1).
+- [x] T1.5 Siapkan `CHANGELOG.md` dengan entri `0.1.0` kosong dan `README.md` kerangka. Selesai: kedua file ada.
+  - Hasil: CHANGELOG sudah punya entri 0.1.0 (tak diubah). README skeleton: problem, tabel platform, install, effects, status, limitation; placeholder TODO untuk Fase 8 (GIF, native setup, contoh final, LiveKit).
 
 ## Fase 2 — Inti Dart (M1)
 
