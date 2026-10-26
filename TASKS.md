@@ -42,12 +42,18 @@ Repo dibuat di awal fase ini supaya spike dan ADR punya tempat. Kode spike diker
 
 ## Fase 2 — Inti Dart (M1)
 
-- [ ] T2.1 Definisikan model efek: `sealed class VirtualBackgroundEffect` dengan `BlurEffect`, `ImageEffect` (asset, file, bytes), `ColorEffect`, `NoEffect`. Selesai: unit test serialisasi ke map untuk method channel.
-- [ ] T2.2 Definisikan enum dan class status serta hierarki exception. Selesai: semua kode error di FR-08 punya tipe dan pesan.
-- [ ] T2.3 Implementasikan class utama `MiVirtualBackgroundKit`: `attach`, `detach`, `setEffect`, `dispose`, `statusStream`, dan `isSupported()`. Selesai: perilaku sesuai API di PRD, termasuk idempoten untuk `detach` dan `dispose`.
-- [ ] T2.4 Buat `platform_interface` dan implementasi method channel, plus event channel untuk status. Selesai: bisa di-mock penuh di unit test.
-- [ ] T2.5 Validasi input di sisi Dart (radius di luar rentang, gambar kosong, track tidak valid). Selesai: error dilempar sebelum menyentuh native.
-- [ ] T2.6 Unit test seluruh logika Dart. Selesai: cakupan logika Dart mendekati penuh.
+- [x] T2.1 Definisikan model efek: `sealed class VirtualBackgroundEffect` dengan `BlurEffect`, `ImageEffect` (asset, file, bytes), `ColorEffect`, `NoEffect`. Selesai: unit test serialisasi ke map untuk method channel.
+  - Hasil: `lib/src/effects/effects.dart` — sealed class + `BackgroundFit` + `ImageSourceType`. `toMap()` untuk channel. 7 test serialisasi + exhaustiveness. Commit `0ca8e76`.
+- [x] T2.2 Definisikan enum dan class status serta hierarki exception. Selesai: semua kode error di FR-08 punya tipe dan pesan.
+  - Hasil: `lib/src/status/status.dart` — enum `ProcessorStatus` (FR-07) + sealed `BackgroundException` dengan 4 subclass FR-08 (`unsupportedPlatform`, `modelLoadFailed`, `invalidTrack`, `invalidImage`). 6 test. Commit `452fe52`.
+- [x] T2.3 Implementasikan class utama `MiVirtualBackgroundKit`: `attach`, `detach`, `setEffect`, `dispose`, `statusStream`, dan `isSupported()`. Selesai: perilaku sesuai API di PRD, termasuk idempoten untuk `detach` dan `dispose`.
+  - Hasil: API sesuai PRD; `detach`/`dispose` idempoten; `dispose` membuat kit tak terpakai (`StateError`). Spike method dipertahankan sementara (dihapus Fase 7). `example/integration_test/` scaffold dihapus (referensi API lama). 30 test. Commit `129cb26`.
+- [x] T2.4 Buat `platform_interface` dan implementasi method channel, plus event channel untuk status. Selesai: bisa di-mock penuh di unit test.
+  - Hasil: method channel `isSupported`/`attach`/`setEffect`/`detach`/`dispose`; event channel `mi_virtual_background_kit/status` → `ProcessorStatus`; kode FR-08 di-map ke exception typed. 12 test channel. Commit `9bfaab2`.
+- [x] T2.5 Validasi input di sisi Dart (radius di luar rentang, gambar kosong, track tidak valid). Selesai: error dilempar sebelum menyentuh native.
+  - Hasil: blur radius harus di `(0, 100]` → `ArgumentError`; path/bytes kosong → `InvalidImageException`; track tanpa id → `InvalidTrackException` (dari T2.3). Platform tidak dipanggil saat validasi gagal. Commit `69b20f1`.
+- [x] T2.6 Unit test seluruh logika Dart. Selesai: cakupan logika Dart mendekati penuh.
+  - Hasil: coverage **197/197 = 100%** seluruh `lib/`. Tambah `platform_interface_test` (default throw + default instance), spike delegate tests, null-map fallback. 53 test. Commit `625c5df`.
 
 ## Fase 3 — Android native (M2)
 
