@@ -189,15 +189,17 @@ class _SpikePageState extends State<SpikePage> {
     const width = 640;
     const height = 480;
     final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, const Rect.fromLTWH(0.0, 0.0, 640.0, 480.0));
+    final canvas = Canvas(
+      recorder,
+      const Rect.fromLTWH(0.0, 0.0, 640.0, 480.0),
+    );
 
     // Sky-blue to orange gradient
     final paint = Paint()
-      ..shader = ui.Gradient.linear(
-        Offset.zero,
-        const Offset(0.0, 480.0),
-        [const Color(0xFF1E88E5), const Color(0xFFFF6F00)],
-      );
+      ..shader = ui.Gradient.linear(Offset.zero, const Offset(0.0, 480.0), [
+        const Color(0xFF1E88E5),
+        const Color(0xFFFF6F00),
+      ]);
     canvas.drawRect(const Rect.fromLTWH(0.0, 0.0, 640.0, 480.0), paint);
 
     // Upward arrow
@@ -399,7 +401,10 @@ class _SpikePageState extends State<SpikePage> {
                   top: 12,
                   left: 12,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black54,
                       borderRadius: BorderRadius.circular(4),
@@ -424,9 +429,7 @@ class _SpikePageState extends State<SpikePage> {
                     child: Material(
                       elevation: 4,
                       child: SafeArea(
-                        child: SingleChildScrollView(
-                          child: _buildControls(),
-                        ),
+                        child: SingleChildScrollView(child: _buildControls()),
                       ),
                     ),
                   ),
@@ -440,10 +443,7 @@ class _SpikePageState extends State<SpikePage> {
               if (!_hideControls)
                 Material(
                   elevation: 4,
-                  child: SafeArea(
-                    top: false,
-                    child: _buildControls(),
-                  ),
+                  child: SafeArea(top: false, child: _buildControls()),
                 ),
             ],
           );
