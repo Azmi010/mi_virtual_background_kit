@@ -15,9 +15,13 @@ in flutter_webrtc based video call apps. Processing is fully on-device.
   s.author           = { 'Ulul Azmi' => 'ulul10039@gmail.com' }
   s.source           = { :path => '.' }
   s.source_files = 'mi_virtual_background_kit/Sources/mi_virtual_background_kit/**/*'
+  s.resource_bundles = {
+    'mi_virtual_background_kit' => ['mi_virtual_background_kit/Sources/mi_virtual_background_kit/Resources/**/*']
+  }
   s.dependency 'Flutter'
   s.dependency 'flutter_webrtc', '~> 1.6.2'
-  s.platform = :ios, '13.0'
+  s.dependency 'MediaPipeTasksVision'
+  s.platform = :ios, '15.0'
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }

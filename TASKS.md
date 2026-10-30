@@ -74,7 +74,8 @@ Repo dibuat di awal fase ini supaya spike dan ADR punya tempat. Kode spike diker
 
 ## Fase 4 — iOS native (M3)
 
-- [ ] T4.1 Integrasikan mesin segmentasi di iOS (CocoaPods dan/atau SPM). Selesai: mask dihasilkan di perangkat fisik.
+- [x] T4.1 Integrasikan mesin segmentasi di iOS (CocoaPods dan/atau SPM). Selesai: mask dihasilkan di perangkat fisik.
+  - Hasil: Integrasi MediaPipe Image Segmenter (`MediaPipeTasksVision`) via Swift Package Manager (`google-ai-edge/mediapipe`) dan CocoaPods `.podspec`. Model asset `selfie_segmenter.tflite` (250 KB) di-bundle ke dalam folder `Resources/` plugin. Dibuat arsitektur modular di `Segmentation/`: `PersonMask` (penampung alpha mask), `SegmentationError` (typed error handling FR-08), `MaskCodec` (menangani parsing category mask UINT8 `person=0` & FLOAT32 `>=0.5`), dan `Segmenter` (`MaskSegmenter`, CPU delegate, fallback multi-bundle path, dan zero-alloc alpha buffer). Hook verifikasi dipasang pada `spikeBenchmarkReadback`. Build iOS debug (`Runner.app`) berhasil 100%, `flutter analyze` 0 issue.
 - [ ] T4.2 Pasang frame processor sesuai hasil T0.5. Selesai: frame kamera melewati prosesor.
 - [ ] T4.3 Implementasikan komposit blur, gambar, dan warna (Metal atau Core Image). Selesai: paritas visual dengan Android.
 - [ ] T4.4 Tangani orientasi, mirror, dan color space. Selesai: hasil benar di kamera depan dan belakang.

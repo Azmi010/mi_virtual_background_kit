@@ -9,20 +9,71 @@ import flutter_webrtc
 ///
 /// The transform swaps chroma data in the camera's pixel buffer (Cb/Cr for
 /// YCbCr, R/B for BGRA), which produces a visible colour shift in the preview.
-public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin {
+public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   private var spikeProcessor: SpikeFrameProcessor?
+  private var eventSink: FlutterEventSink?
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "mi_virtual_background_kit", binaryMessenger: registrar.messenger())
+    let eventChannel = FlutterEventChannel(name: "mi_virtual_background_kit/status", binaryMessenger: registrar.messenger())
     let instance = MiVirtualBackgroundKitPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
+    eventChannel.setStreamHandler(instance)
+  }
+
+  public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+    self.eventSink = events
+    events("idle")
+    return nil
+  }
+
+  public func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    self.eventSink = nil
+    return nil
+  }
+
+  private func runSegmenterSelfTest() {
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        print("[MiVBGSegmenter] Starting MediaPipe Segmenter test on physical device...")
+        let segmenter = try Segmenter()
+        defer { segmenter.close() }
+        let size = CGSize(width: 256, height: 256)
+        UIGraphicsBeginImageContextWithOptions(size, true, 1.0)
+        UIColor.white.setFill()
+        UIRectFill(CGRect(origin: .zero, size: size))
+        UIColor.darkGray.setFill()
+        UIBezierPath(ovalIn: CGRect(x: 64, y: 32, width: 128, height: 160)).fill()
+        let testImage = UIGraphicsGetImageFromCurrentImageContext() ?? UIImage()
+        UIGraphicsEndImageContext()
+
+        let start = CFAbsoluteTimeGetCurrent()
+        let mask = try segmenter.segment(image: testImage)
+        let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+        let logMsg = "MiVBGSegmenter SUCCESS: mask \(mask.width)x\(mask.height) person=\(mask.personPixelCount) time=\(elapsedMs)ms"
+        print("[MiVBGSegmenter] \(logMsg)")
+        NSLog(logMsg)
+      } catch {
+        let err = "MiVBGSegmenter ERROR: \(error)"
+        print("[MiVBGSegmenter] \(err)")
+        NSLog(err)
+      }
+    }
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {
     case "getPlatformVersion":
       result("iOS " + UIDevice.current.systemVersion)
+    case "isSupported":
+      runSegmenterSelfTest()
+      if #available(iOS 15.0, *) {
+        result(true)
+      } else {
+        result(false)
+      }
     case "spikeAttach":
+      runSegmenterSelfTest()
       guard let args = call.arguments as? [String: Any],
             let trackId = args["trackId"] as? String else {
         result(FlutterError(code: "bad_args", message: "trackId is required", details: nil))
@@ -67,9 +118,31 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin {
       spikeProcessor?.enabled = (args?["enabled"] as? Bool) ?? true
       result(true)
     case "spikeBenchmarkReadback":
-      // CPU readback benchmark is Android-only; no-op so the example timer
-      // does not hit MissingPluginException.
-      result(true)
+      do {
+        let segmenter = try Segmenter()
+        defer { segmenter.close() }
+        let size = CGSize(width: 256, height: 256)
+        UIGraphicsBeginImageContextWithOptions(size, true, 1.0)
+        UIColor.white.setFill()
+        UIRectFill(CGRect(origin: .zero, size: size))
+        UIColor.darkGray.setFill()
+        UIBezierPath(ovalIn: CGRect(x: 64, y: 32, width: 128, height: 160)).fill()
+        let testImage = UIGraphicsGetImageFromCurrentImageContext() ?? UIImage()
+        UIGraphicsEndImageContext()
+
+        let start = CFAbsoluteTimeGetCurrent()
+        let mask = try segmenter.segment(image: testImage)
+        let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+        let logMsg = "MiVBGSegmenter SUCCESS: mask \(mask.width)x\(mask.height) person=\(mask.personPixelCount) time=\(elapsedMs)ms"
+        print("[MiVBGSegmenter] \(logMsg)")
+        NSLog(logMsg)
+        result(true)
+      } catch {
+        let err = "MiVBGSegmenter ERROR: \(error)"
+        print("[MiVBGSegmenter] \(err)")
+        NSLog(err)
+        result(false)
+      }
     case "spikeDetach":
       guard let args = call.arguments as? [String: Any],
             let trackId = args["trackId"] as? String else {
