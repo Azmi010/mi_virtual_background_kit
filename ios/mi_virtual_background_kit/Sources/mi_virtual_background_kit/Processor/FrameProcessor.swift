@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import WebRTC
 import flutter_webrtc
 
@@ -7,12 +8,22 @@ import flutter_webrtc
 ///
 /// Runs on the WebRTC capture/encoder thread.
 ///
-/// In T4.2:
+/// In T4.3:
 /// - Passthrough with zero overhead when no effect is applied (FR-04).
-/// - Thread-safe frame counter and dimension/rotation tracking.
-/// - Periodic logging every 150 frames to verify 30 fps throughput.
+/// - Metal and Core Image GPU compositing for Blur, Color, and Image effects.
+/// - Asynchronous person segmentation throttled to every 5 frames (~6 Hz at 30 fps)
+///   on a dedicated background queue to never block the camera capture thread.
 /// - Conforms to ExternalVideoProcessingDelegate.
 public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
+
+    public enum EffectState {
+        case blur(radius: Float)
+        case color(color: UInt32)
+        case image(image: UIImage, fit: String)
+    }
+
+    public static let segmentEveryNFrames = 5
+
     private let lock = NSLock()
     private var frames: Int = 0
     private var _lastRotation: Int32 = 0
@@ -20,6 +31,17 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
     private var _lastHeight: Int32 = 0
     private var _bufferType: String = ""
     private var isReleased: Bool = false
+
+    public var currentEffect: EffectState?
+
+    private let compositor: FrameCompositor
+    private var segmenter: MaskSegmenter?
+    private var segmenterProvider: (() -> MaskSegmenter)?
+    private let segmentQueue = DispatchQueue(
+        label: "com.azmi010.mi_virtual_background_kit.segmentation",
+        qos: .userInteractive
+    )
+    private var isSegmenting: Bool = false
 
     public var onStatusChange: ((String) -> Void)?
 
@@ -53,9 +75,60 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         return _bufferType
     }
 
-    public init(onStatusChange: ((String) -> Void)? = nil) {
+    public init(
+        compositor: FrameCompositor? = nil,
+        segmenterProvider: (() -> MaskSegmenter)? = nil,
+        onStatusChange: ((String) -> Void)? = nil
+    ) {
+        self.compositor = compositor ?? GpuCompositor()
+        self.segmenterProvider = segmenterProvider
         self.onStatusChange = onStatusChange
         super.init()
+    }
+
+    public func setBlurEffect(radius: Float) {
+        lock.lock()
+        currentEffect = .blur(radius: radius)
+        lock.unlock()
+        ensureSegmenter()
+    }
+
+    public func setColorEffect(color: UInt32) {
+        lock.lock()
+        currentEffect = .color(color: color)
+        lock.unlock()
+        ensureSegmenter()
+    }
+
+    public func setImageEffect(image: UIImage, fit: String) {
+        lock.lock()
+        currentEffect = .image(image: image, fit: fit)
+        lock.unlock()
+        compositor.uploadImage(image)
+        ensureSegmenter()
+    }
+
+    public func clearEffect() {
+        lock.lock()
+        currentEffect = nil
+        lock.unlock()
+    }
+
+    private func ensureSegmenter() {
+        lock.lock()
+        defer { lock.unlock() }
+        if segmenter == nil {
+            do {
+                if let provider = segmenterProvider {
+                    segmenter = provider()
+                } else {
+                    segmenter = try Segmenter()
+                }
+            } catch {
+                NSLog("MiVBG failed to initialize Segmenter: \(error)")
+                onStatusChange?("error")
+            }
+        }
     }
 
     public func onFrame(_ frame: RTCVideoFrame) -> RTCVideoFrame {
@@ -78,16 +151,79 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         if currentFrames % 150 == 0 {
             print("[MiVBGProcessor] Frame pass #\(currentFrames) (30 fps stable, \(_lastWidth)x\(_lastHeight))")
         }
+
+        let effect = currentEffect
         lock.unlock()
 
-        // In T4.2: pure passthrough of camera frames to verify processor hook.
-        // T4.3 will add GPU compositing (blur, image, color).
+        // 1. Bypass when no effect is applied (FR-04)
+        guard let activeEffect = effect else {
+            return frame
+        }
+
+        guard let rtcBuffer = frame.buffer as? RTCCVPixelBuffer else {
+            return frame
+        }
+        let pixelBuffer = rtcBuffer.pixelBuffer
+
+        // 2. Trigger asynchronous segmentation if worker is idle
+        if !compositor.hasMask || currentFrames % FrameProcessor.segmentEveryNFrames == 0 {
+            triggerSegmentation(pixelBuffer: pixelBuffer)
+        }
+
+        // 3. Composite using latest available mask
+        if compositor.hasMask {
+            switch activeEffect {
+            case .blur(let radius):
+                if let composed = compositor.composeBlur(frame: frame, radius: radius) {
+                    return composed
+                }
+            case .color(let color):
+                if let composed = compositor.composeColor(frame: frame, color: color) {
+                    return composed
+                }
+            case .image(_, let fit):
+                if let composed = compositor.composeImage(frame: frame, fit: fit) {
+                    return composed
+                }
+            }
+        }
+
         return frame
+    }
+
+    private func triggerSegmentation(pixelBuffer: CVPixelBuffer) {
+        lock.lock()
+        guard !isSegmenting, let seg = segmenter else {
+            lock.unlock()
+            return
+        }
+        isSegmenting = true
+        lock.unlock()
+
+        segmentQueue.async { [weak self] in
+            guard let self = self else { return }
+            defer {
+                self.lock.lock()
+                self.isSegmenting = false
+                self.lock.unlock()
+            }
+
+            do {
+                let mask = try seg.segment(pixelBuffer: pixelBuffer)
+                self.compositor.uploadMask(mask)
+            } catch {
+                NSLog("MiVBG segmentation error: \(error)")
+            }
+        }
     }
 
     public func release() {
         lock.lock()
         defer { lock.unlock() }
         isReleased = true
+        currentEffect = nil
+        compositor.release()
+        segmenter?.close()
+        segmenter = nil
     }
 }

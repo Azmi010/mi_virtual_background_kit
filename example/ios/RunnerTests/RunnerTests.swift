@@ -89,6 +89,139 @@ class RunnerTests: XCTestCase {
     waitForExpectations(timeout: 1)
   }
 
+  // MARK: - GpuCompositor & Compositing Tests
+
+  func testGpuCompositorInitialStateAndUploadMask() {
+    let compositor = GpuCompositor()
+    XCTAssertFalse(compositor.hasMask)
+
+    let mask = PersonMask(alpha: [255, 0, 0, 255], width: 2, height: 2)
+    compositor.uploadMask(mask)
+    XCTAssertTrue(compositor.hasMask)
+
+    compositor.release()
+    XCTAssertFalse(compositor.hasMask)
+  }
+
+  func testGpuCompositorUploadImage() {
+    let compositor = GpuCompositor()
+    let size = CGSize(width: 8, height: 8)
+    UIGraphicsBeginImageContext(size)
+    UIColor.blue.setFill()
+    UIRectFill(CGRect(origin: .zero, size: size))
+    let testImg = UIGraphicsGetImageFromCurrentImageContext() ?? UIImage()
+    UIGraphicsEndImageContext()
+
+    compositor.uploadImage(testImg)
+    compositor.release()
+    XCTAssertFalse(compositor.hasMask)
+  }
+
+  func testFrameProcessorEffectTransitions() {
+    let processor = FrameProcessor()
+    XCTAssertNil(processor.currentEffect)
+
+    processor.setBlurEffect(radius: 12.0)
+    if case .blur(let radius) = processor.currentEffect {
+      XCTAssertEqual(radius, 12.0)
+    } else {
+      XCTFail("Expected .blur(12.0)")
+    }
+
+    processor.setColorEffect(color: 0xFF112233)
+    if case .color(let color) = processor.currentEffect {
+      XCTAssertEqual(color, 0xFF112233)
+    } else {
+      XCTFail("Expected .color(0xFF112233)")
+    }
+
+    let size = CGSize(width: 4, height: 4)
+    UIGraphicsBeginImageContext(size)
+    let img = UIGraphicsGetImageFromCurrentImageContext() ?? UIImage()
+    UIGraphicsEndImageContext()
+
+    processor.setImageEffect(image: img, fit: "contain")
+    if case .image(_, let fit) = processor.currentEffect {
+      XCTAssertEqual(fit, "contain")
+    } else {
+      XCTFail("Expected .image(_, fit: contain)")
+    }
+
+    processor.clearEffect()
+    XCTAssertNil(processor.currentEffect)
+
+    processor.release()
+  }
+
+  func testPluginSetEffectBlurAndColorAndNone() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+
+    // Missing type arg -> bad_args
+    let badCall = FlutterMethodCall(methodName: "setEffect", arguments: ["radius": 10])
+    let expBad = expectation(description: "bad args error")
+    plugin.handle(badCall) { result in
+      guard let err = result as? FlutterError else {
+        XCTFail("Expected FlutterError, got \(String(describing: result))")
+        return
+      }
+      XCTAssertEqual(err.code, "bad_args")
+      expBad.fulfill()
+    }
+
+    // Blur call
+    let blurCall = FlutterMethodCall(methodName: "setEffect", arguments: ["type": "blur", "radius": 15.0])
+    let expBlur = expectation(description: "blur success")
+    plugin.handle(blurCall) { result in
+      XCTAssertNil(result)
+      expBlur.fulfill()
+    }
+
+    // Color call
+    let colorCall = FlutterMethodCall(methodName: "setEffect", arguments: ["type": "color", "color": 0xFF00FF00])
+    let expColor = expectation(description: "color success")
+    plugin.handle(colorCall) { result in
+      XCTAssertNil(result)
+      expColor.fulfill()
+    }
+
+    // None call
+    let noneCall = FlutterMethodCall(methodName: "setEffect", arguments: ["type": "none"])
+    let expNone = expectation(description: "none success")
+    plugin.handle(noneCall) { result in
+      XCTAssertNil(result)
+      expNone.fulfill()
+    }
+
+    // Unsupported type call
+    let unknownCall = FlutterMethodCall(methodName: "setEffect", arguments: ["type": "unknown_type"])
+    let expUnknown = expectation(description: "unknown not implemented")
+    plugin.handle(unknownCall) { result in
+      XCTAssertTrue(result as? NSObject == FlutterMethodNotImplemented)
+      expUnknown.fulfill()
+    }
+
+    waitForExpectations(timeout: 1)
+  }
+
+  func testPluginSetEffectInvalidImage() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    let call = FlutterMethodCall(methodName: "setEffect", arguments: [
+      "type": "image",
+      "sourceType": "invalid_source",
+      "data": "xyz"
+    ])
+    let exp = expectation(description: "invalidImage error")
+    plugin.handle(call) { result in
+      guard let err = result as? FlutterError else {
+        XCTFail("Expected FlutterError, got \(String(describing: result))")
+        return
+      }
+      XCTAssertEqual(err.code, "invalidImage")
+      exp.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+  }
+
   // MARK: - MaskCodec Tests
 
   func testUInt8CategoryMaskConversion() throws {

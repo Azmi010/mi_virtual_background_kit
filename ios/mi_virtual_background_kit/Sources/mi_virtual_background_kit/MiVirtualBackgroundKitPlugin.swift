@@ -15,11 +15,13 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
   private var attachedTrack: LocalVideoTrack?
   private var eventSink: FlutterEventSink?
   private var currentStatus: String = "idle"
+  private weak var registrar: FlutterPluginRegistrar?
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "mi_virtual_background_kit", binaryMessenger: registrar.messenger())
     let eventChannel = FlutterEventChannel(name: "mi_virtual_background_kit/status", binaryMessenger: registrar.messenger())
     let instance = MiVirtualBackgroundKitPlugin()
+    instance.registrar = registrar
     registrar.addMethodCallDelegate(instance, channel: channel)
     eventChannel.setStreamHandler(instance)
   }
@@ -74,6 +76,39 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
     attachedTrack = nil
     frameProcessor = nil
     spikeProcessor = nil
+  }
+
+  private func decodeImage(sourceType: String, data: Any?) -> UIImage? {
+    guard let data = data else { return nil }
+    switch sourceType {
+    case "asset":
+      guard let assetPath = data as? String else { return nil }
+      let key: String
+      if let regKey = registrar?.lookupKey(forAsset: assetPath) {
+        key = regKey
+      } else {
+        key = "flutter_assets/" + assetPath
+      }
+      if let path = Bundle.main.path(forResource: key, ofType: nil) {
+        return UIImage(contentsOfFile: path)
+      }
+      return UIImage(named: assetPath)
+
+    case "file":
+      guard let path = data as? String else { return nil }
+      return UIImage(contentsOfFile: path)
+
+    case "bytes":
+      if let typedData = data as? FlutterStandardTypedData {
+        return UIImage(data: typedData.data)
+      } else if let rawData = data as? Data {
+        return UIImage(data: rawData)
+      }
+      return nil
+
+    default:
+      return nil
+    }
   }
 
   private func runSegmenterSelfTest() {
@@ -144,6 +179,50 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
       updateStatus("active")
       print("[MiVBG] Successfully attached production FrameProcessor to track: \(trackId)")
       result(nil)
+
+    case "setEffect":
+      guard let args = call.arguments as? [String: Any],
+            let type = args["type"] as? String else {
+        result(FlutterError(code: "bad_args", message: "type is required", details: nil))
+        return
+      }
+
+      switch type {
+      case "blur":
+        let radius = (args["radius"] as? NSNumber)?.floatValue ?? 12.0
+        frameProcessor?.setBlurEffect(radius: radius)
+        updateStatus("active")
+        result(nil)
+
+      case "color":
+        let colorNum = (args["color"] as? NSNumber)?.uint32Value ?? 0xFF000000
+        frameProcessor?.setColorEffect(color: colorNum)
+        updateStatus("active")
+        result(nil)
+
+      case "image":
+        let fit = (args["fit"] as? String) ?? "cover"
+        let sourceType = (args["sourceType"] as? String) ?? "asset"
+        let data = args["data"]
+
+        guard let image = decodeImage(sourceType: sourceType, data: data) else {
+          updateStatus("error")
+          result(FlutterError(code: "invalidImage", message: "Failed to decode image from \(sourceType)", details: nil))
+          return
+        }
+
+        frameProcessor?.setImageEffect(image: image, fit: fit)
+        updateStatus("active")
+        result(nil)
+
+      case "none":
+        frameProcessor?.clearEffect()
+        updateStatus("active")
+        result(nil)
+
+      default:
+        result(FlutterMethodNotImplemented)
+      }
 
     case "detach":
       let wasAttached = (frameProcessor != nil)
