@@ -47,11 +47,18 @@ class _SpikePageState extends State<SpikePage> {
   int _gpuCount = 0;
   String _gpuType = '';
   Timer? _timer;
+  StreamSubscription<ProcessorStatus>? _statusSubscription;
+  ProcessorStatus _processorStatus = ProcessorStatus.idle;
+  bool _isSupported = false;
 
   @override
   void initState() {
     super.initState();
     _renderer.initialize();
+    _statusSubscription = _kit.statusStream.listen((status) {
+      debugPrint('KIT STATUS: $status');
+      if (mounted) setState(() => _processorStatus = status);
+    });
     _start();
   }
 
@@ -69,6 +76,8 @@ class _SpikePageState extends State<SpikePage> {
       _stream = stream;
       final track = stream.getVideoTracks().first;
       _renderer.srcObject = stream;
+      final supported = await _kit.isSupported();
+      if (mounted) setState(() => _isSupported = supported);
       setState(() => _status = 'track=${track.id}');
 
       const prodMode = bool.fromEnvironment('PROD_ATTACH');
@@ -255,6 +264,7 @@ class _SpikePageState extends State<SpikePage> {
 
   @override
   void dispose() {
+    _statusSubscription?.cancel();
     _timer?.cancel();
     _renderer.dispose();
     super.dispose();
@@ -268,7 +278,7 @@ class _SpikePageState extends State<SpikePage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            _status,
+            '$_status  |  status: ${_processorStatus.name.toUpperCase()} (supported: $_isSupported)',
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 11),
           ),
@@ -395,7 +405,7 @@ class _SpikePageState extends State<SpikePage> {
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      'fps: $_fps  frames: $_frames  effect: $_activeEffectName',
+                      'fps: $_fps  frames: $_frames  status: ${_processorStatus.name}  effect: $_activeEffectName',
                       style: const TextStyle(color: Colors.white, fontSize: 11),
                     ),
                   ),

@@ -11,6 +11,7 @@ import com.azmi010.mi_virtual_background_kit.spike.SpikeSegmenterBenchmark
 import com.azmi010.mi_virtual_background_kit.spike.SpikeHook
 import com.azmi010.mi_virtual_background_kit.spike.SpikeInvert
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
@@ -25,6 +26,32 @@ class MiVirtualBackgroundKitPlugin :
     // This local reference serves to register the plugin with the Flutter Engine and unregister it
     // when the Flutter Engine is detached from the Activity
     private lateinit var channel: MethodChannel
+    private var statusChannel: EventChannel? = null
+    internal var statusSink: EventChannel.EventSink? = null
+    private var mainHandler: android.os.Handler? = null
+
+    internal var currentStatus: String = "idle"
+        private set
+
+    private fun runOnMainThread(action: () -> Unit) {
+        val looper = try { android.os.Looper.getMainLooper() } catch (_: Throwable) { null }
+        if (looper != null && android.os.Looper.myLooper() != looper) {
+            if (mainHandler == null) {
+                mainHandler = android.os.Handler(looper)
+            }
+            mainHandler?.post(action)
+        } else {
+            action()
+        }
+    }
+
+    internal fun updateStatus(status: String) {
+        currentStatus = status
+        val sink = statusSink ?: return
+        runOnMainThread {
+            sink.success(status)
+        }
+    }
 
     private var spikeProcessor: SpikeFrameProcessor? = null
 
@@ -46,6 +73,19 @@ class MiVirtualBackgroundKitPlugin :
         flutterAssets = flutterPluginBinding.flutterAssets
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, "mi_virtual_background_kit")
         channel.setMethodCallHandler(this)
+
+        val sc = EventChannel(flutterPluginBinding.binaryMessenger, "mi_virtual_background_kit/status")
+        sc.setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                statusSink = events
+                events?.success(currentStatus)
+            }
+
+            override fun onCancel(arguments: Any?) {
+                statusSink = null
+            }
+        })
+        statusChannel = sc
     }
 
     override fun onMethodCall(
@@ -54,22 +94,33 @@ class MiVirtualBackgroundKitPlugin :
     ) {
         when (call.method) {
             "getPlatformVersion" -> result.success("Android ${android.os.Build.VERSION.RELEASE}")
+            "isSupported" -> {
+                // FR-13: Supported on Android SDK >= 24 (minSdk per ADR 0001)
+                result.success(android.os.Build.VERSION.SDK_INT >= 24)
+            }
             "attach" -> {
                 val trackId = call.argument<String>("trackId")
                 if (trackId.isNullOrBlank()) {
+                    updateStatus("error")
                     result.error("invalidTrack", "trackId is required", null)
                     return
                 }
+                updateStatus("initializing")
                 // Re-attach replaces: never stack processors on one track.
                 releaseFrameProcessor()
-                val processor = FrameProcessor(context = appContext)
+                val processor = FrameProcessor(
+                    context = appContext,
+                    onStatusChange = { status -> updateStatus(status) },
+                )
                 val track = attachFrameProcessor(trackId, processor)
                 if (track == null) {
+                    updateStatus("error")
                     result.error("invalidTrack", "no local video track: $trackId", null)
                     return
                 }
                 attachedTrack = track
                 frameProcessor = processor
+                updateStatus("active")
                 android.util.Log.i("MiVBG", "attached processor to $trackId")
                 result.success(null)
             }
@@ -80,8 +131,10 @@ class MiVirtualBackgroundKitPlugin :
                         val radius = (call.argument<Number>("radius")?.toDouble() ?: 12.0).toFloat()
                         try {
                             frameProcessor?.setBlurEffect(radius)
+                            updateStatus("active")
                             result.success(null)
                         } catch (t: Throwable) {
+                            updateStatus("error")
                             result.error("modelLoadFailed", t.message, null)
                         }
                     }
@@ -89,8 +142,10 @@ class MiVirtualBackgroundKitPlugin :
                         val color = (call.argument<Number>("color")?.toLong() ?: 0xFF000000).toInt()
                         try {
                             frameProcessor?.setColorEffect(color)
+                            updateStatus("active")
                             result.success(null)
                         } catch (t: Throwable) {
+                            updateStatus("error")
                             result.error("modelLoadFailed", t.message, null)
                         }
                     }
@@ -101,22 +156,27 @@ class MiVirtualBackgroundKitPlugin :
                         val bitmap = try {
                             imageDecoder(sourceType, data)
                         } catch (t: Throwable) {
+                            updateStatus("error")
                             result.error("invalidImage", "Failed to decode image: ${t.message}", null)
                             return
                         }
                         if (bitmap == null) {
+                            updateStatus("error")
                             result.error("invalidImage", "Failed to decode image from $sourceType", null)
                             return
                         }
                         try {
                             frameProcessor?.setImageEffect(bitmap, fit)
+                            updateStatus("active")
                             result.success(null)
                         } catch (t: Throwable) {
+                            updateStatus("error")
                             result.error("modelLoadFailed", t.message, null)
                         }
                     }
                     "none" -> {
                         frameProcessor?.clearEffect()
+                        updateStatus("active")
                         result.success(null)
                     }
                     else -> result.notImplemented()
@@ -125,7 +185,14 @@ class MiVirtualBackgroundKitPlugin :
             "detach" -> {
                 val had = frameProcessor != null
                 releaseFrameProcessor()
+                updateStatus("idle")
                 android.util.Log.i("MiVBG", "detached processor (wasAttached=$had)")
+                result.success(null)
+            }
+            "dispose" -> {
+                releaseFrameProcessor()
+                updateStatus("idle")
+                android.util.Log.i("MiVBG", "disposed plugin resources")
                 result.success(null)
             }
             "spikeAttach" -> {
@@ -476,6 +543,9 @@ class MiVirtualBackgroundKitPlugin :
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         releaseFrameProcessor()
         channel.setMethodCallHandler(null)
+        statusChannel?.setStreamHandler(null)
+        statusChannel = null
+        statusSink = null
         flutterAssets = null
         appContext = null
     }

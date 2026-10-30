@@ -35,6 +35,7 @@ class FrameProcessor(
     private val segmenterProvider: (() -> MaskSegmenter)? = null,
     private val compositorProvider: (() -> FrameCompositor)? = null,
     private val bitmapProvider: ((Int, Int) -> Bitmap)? = null,
+    private val onStatusChange: ((String) -> Unit)? = null,
 ) : LocalVideoTrack.ExternalVideoFrameProcessing {
 
     private val frames = AtomicInteger(0)
@@ -234,6 +235,7 @@ class FrameProcessor(
                             )
                         } catch (t: Throwable) {
                             Log.e(TAG, "Background segmentation failed: $t")
+                            onStatusChange?.invoke("error")
                         } finally {
                             isSegmenting.set(false)
                         }

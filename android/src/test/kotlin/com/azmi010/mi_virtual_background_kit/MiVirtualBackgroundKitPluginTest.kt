@@ -1,9 +1,11 @@
 package com.azmi010.mi_virtual_background_kit
 
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import org.mockito.Mockito
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
 /*
  * This demonstrates a simple unit test of the Kotlin portion of this plugin's implementation.
@@ -134,5 +136,50 @@ internal class MiVirtualBackgroundKitPluginTest {
         plugin.onMethodCall(call, mockResult)
 
         Mockito.verify(mockResult).notImplemented()
+    }
+
+    @Test
+    fun onMethodCall_isSupported_returnsExpectedValue() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+
+        val call = MethodCall("isSupported", null)
+        val mockResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(call, mockResult)
+
+        val expected = android.os.Build.VERSION.SDK_INT >= 24
+        Mockito.verify(mockResult).success(expected)
+    }
+
+    @Test
+    fun onMethodCall_dispose_succeedsAndSetsIdle() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+
+        val call = MethodCall("dispose", null)
+        val mockResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(call, mockResult)
+
+        Mockito.verify(mockResult).success(null)
+        assertEquals("idle", plugin.currentStatus)
+    }
+
+    @Test
+    fun statusStream_updatesSinkOnStatusChange() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+        val mockSink: EventChannel.EventSink = Mockito.mock(EventChannel.EventSink::class.java)
+        plugin.statusSink = mockSink
+
+        assertEquals("idle", plugin.currentStatus)
+
+        plugin.updateStatus("initializing")
+        Mockito.verify(mockSink).success("initializing")
+        assertEquals("initializing", plugin.currentStatus)
+
+        plugin.updateStatus("active")
+        Mockito.verify(mockSink).success("active")
+        assertEquals("active", plugin.currentStatus)
+
+        plugin.updateStatus("error")
+        Mockito.verify(mockSink).success("error")
+        assertEquals("error", plugin.currentStatus)
     }
 }
