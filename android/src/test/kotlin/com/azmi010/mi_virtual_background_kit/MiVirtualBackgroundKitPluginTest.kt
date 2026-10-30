@@ -14,6 +14,16 @@ import kotlin.test.Test
  */
 
 internal class MiVirtualBackgroundKitPluginTest {
+
+    private fun createTestBitmap(): android.graphics.Bitmap {
+        val unsafeClass = Class.forName("sun.misc.Unsafe")
+        val field = unsafeClass.getDeclaredField("theUnsafe")
+        field.isAccessible = true
+        val unsafe = field.get(null)
+        val allocateMethod = unsafeClass.getMethod("allocateInstance", Class::class.java)
+        return allocateMethod.invoke(unsafe, android.graphics.Bitmap::class.java) as android.graphics.Bitmap
+    }
+
     @Test
     fun onMethodCall_getPlatformVersion_returnsExpectedValue() {
         val plugin = MiVirtualBackgroundKitPlugin()
@@ -56,6 +66,59 @@ internal class MiVirtualBackgroundKitPluginTest {
         val plugin = MiVirtualBackgroundKitPlugin()
 
         val call = MethodCall("setEffect", mapOf("type" to "none"))
+        val mockResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(call, mockResult)
+
+        Mockito.verify(mockResult).success(null)
+    }
+
+    @Test
+    fun onMethodCall_setEffectBlur_succeeds() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+
+        val call = MethodCall("setEffect", mapOf("type" to "blur", "radius" to 15.0))
+        val mockResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(call, mockResult)
+
+        Mockito.verify(mockResult).success(null)
+    }
+
+    @Test
+    fun onMethodCall_setEffectColor_succeeds() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+
+        val call = MethodCall("setEffect", mapOf("type" to "color", "color" to 0xFF123456))
+        val mockResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(call, mockResult)
+
+        Mockito.verify(mockResult).success(null)
+    }
+
+    @Test
+    fun onMethodCall_setEffectImage_invalidData_errorsInvalidImage() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+
+        val call = MethodCall("setEffect", mapOf("type" to "image", "sourceType" to "file", "data" to "non_existent.png"))
+        val mockResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(call, mockResult)
+
+        Mockito.verify(mockResult).error(
+            Mockito.eq("invalidImage"),
+            Mockito.any(),
+            Mockito.isNull(),
+        )
+    }
+
+    @Test
+    fun onMethodCall_setEffectImage_validBytes_succeeds() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+        val mockBitmap = createTestBitmap()
+        plugin.imageDecoder = { _, _ -> mockBitmap }
+
+        val call = MethodCall(
+            "setEffect",
+            mapOf("type" to "image", "sourceType" to "bytes", "fit" to "cover", "data" to byteArrayOf(1, 2, 3)),
+        )
         val mockResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
         plugin.onMethodCall(call, mockResult)
 

@@ -1,8 +1,10 @@
 package com.azmi010.mi_virtual_background_kit.compositor
 
+import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.opengl.GLES11Ext
 import android.opengl.GLES20
+import android.opengl.GLUtils
 import android.util.Log
 import com.azmi010.mi_virtual_background_kit.segmentation.PersonMask
 import org.webrtc.GlUtil
@@ -22,7 +24,10 @@ interface FrameCompositor {
     val readbackHeight: Int
     fun readBackRgba(buffer: VideoFrame.TextureBuffer): ByteArray?
     fun uploadMask(mask: PersonMask)
+    fun uploadImage(bitmap: Bitmap)
     fun composeBlur(frame: VideoFrame, radius: Float): VideoFrame?
+    fun composeColor(frame: VideoFrame, color: Int): VideoFrame?
+    fun composeImage(frame: VideoFrame, fit: String): VideoFrame?
     fun release()
 }
 
@@ -30,8 +35,10 @@ interface FrameCompositor {
  * OpenGL ES 2 GPU compositor for virtual background effects.
  *
  * Runs on the libwebrtc capture thread (which owns the shared EGL context).
- * In T3.3, composites a 3x3 box blur behind the person using the segmentation
- * mask produced by [com.azmi010.mi_virtual_background_kit.segmentation.Segmenter].
+ * Supports:
+ * - 3x3 box blur (T3.3)
+ * - Solid color background (T3.4, FR-03)
+ * - Image background with cover and contain fits in portrait & landscape (T3.4, FR-02)
  */
 class GpuCompositor : FrameCompositor {
 
@@ -79,11 +86,54 @@ class GpuCompositor : FrameCompositor {
     private var bl2dUTexelSize = 0
     private var bl2dUTexelScale = 0
 
+    // Color composite program (OES & 2D)
+    private var colorProgramOes = 0
+    private var clOesAPos = 0
+    private var clOesATex = 0
+    private var clOesUCamTransform = 0
+    private var clOesUCamTex = 0
+    private var clOesUMaskTex = 0
+    private var clOesUColor = 0
+
+    private var colorProgram2D = 0
+    private var cl2dAPos = 0
+    private var cl2dATex = 0
+    private var cl2dUCamTransform = 0
+    private var cl2dUCamTex = 0
+    private var cl2dUMaskTex = 0
+    private var cl2dUColor = 0
+
+    // Image composite program (OES & 2D)
+    private var imageProgramOes = 0
+    private var imOesAPos = 0
+    private var imOesATex = 0
+    private var imOesUCamTransform = 0
+    private var imOesUImgTransform = 0
+    private var imOesUCamTex = 0
+    private var imOesUMaskTex = 0
+    private var imOesUImgTex = 0
+    private var imOesUFitMode = 0
+
+    private var imageProgram2D = 0
+    private var im2dAPos = 0
+    private var im2dATex = 0
+    private var im2dUCamTransform = 0
+    private var im2dUImgTransform = 0
+    private var im2dUCamTex = 0
+    private var im2dUMaskTex = 0
+    private var im2dUImgTex = 0
+    private var im2dUFitMode = 0
+
     // Mask texture
     private var maskTextureId = 0
     private var maskWidth = 0
     private var maskHeight = 0
     private var maskByteBuffer: ByteBuffer? = null
+
+    // Background Image texture
+    private var imageTextureId = 0
+    private var imageWidth = 0
+    private var imageHeight = 0
 
     // Readback buffer reuse
     private var readbackBuffer: ByteBuffer? = null
@@ -95,6 +145,7 @@ class GpuCompositor : FrameCompositor {
         private set
 
     override val hasMask: Boolean get() = maskTextureId != 0
+    val hasImage: Boolean get() = imageTextureId != 0
 
     private val vertices = floatArrayOf(
         -1f, -1f,
@@ -229,9 +280,28 @@ class GpuCompositor : FrameCompositor {
     }
 
     /**
+     * Uploads a background image [bitmap] to an OpenGL texture.
+     */
+    override fun uploadImage(bitmap: Bitmap) {
+        if (imageTextureId == 0) {
+            val textures = IntArray(1)
+            GLES20.glGenTextures(1, textures, 0)
+            imageTextureId = textures[0]
+        }
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, imageTextureId)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
+
+        imageWidth = bitmap.width
+        imageHeight = bitmap.height
+    }
+
+    /**
      * Composites a blur effect behind the person in [frame].
-     *
-     * @param radius blur radius in [0, 100]. Mapped linearly via `radius / 25f`.
      */
     override fun composeBlur(frame: VideoFrame, radius: Float): VideoFrame? {
         val buffer = frame.buffer as? VideoFrame.TextureBuffer ?: return null
@@ -306,6 +376,221 @@ class GpuCompositor : FrameCompositor {
             Runnable { },
         )
         return VideoFrame(outBuffer, frame.rotation, frame.timestampNs)
+    }
+
+    /**
+     * Composites a solid color background behind the person in [frame].
+     */
+    override fun composeColor(frame: VideoFrame, color: Int): VideoFrame? {
+        val buffer = frame.buffer as? VideoFrame.TextureBuffer ?: return null
+        if (maskTextureId == 0) return null
+
+        val width = buffer.unscaledWidth
+        val height = buffer.unscaledHeight
+        val isOes = buffer.type == VideoFrame.TextureBuffer.Type.OES
+        val target = if (isOes) GLES11Ext.GL_TEXTURE_EXTERNAL_OES else GLES20.GL_TEXTURE_2D
+
+        if (outWidth != width || outHeight != height) {
+            createOutput(width, height)
+        }
+
+        ensureBuffers()
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo)
+        GLES20.glViewport(0, 0, width, height)
+
+        val r = ((color shr 16) and 0xFF) / 255.0f
+        val g = ((color shr 8) and 0xFF) / 255.0f
+        val b = (color and 0xFF) / 255.0f
+        val texMatrix = convertMatrix(buffer.transformMatrix)
+
+        if (isOes) {
+            if (colorProgramOes == 0) buildColorProgramOes()
+            drawColorQuad(
+                colorProgramOes,
+                clOesAPos,
+                clOesATex,
+                clOesUCamTransform,
+                clOesUCamTex,
+                clOesUMaskTex,
+                clOesUColor,
+                target,
+                buffer.textureId,
+                maskTextureId,
+                texMatrix,
+                r, g, b,
+            )
+        } else {
+            if (colorProgram2D == 0) buildColorProgram2D()
+            drawColorQuad(
+                colorProgram2D,
+                cl2dAPos,
+                cl2dATex,
+                cl2dUCamTransform,
+                cl2dUCamTex,
+                cl2dUMaskTex,
+                cl2dUColor,
+                target,
+                buffer.textureId,
+                maskTextureId,
+                texMatrix,
+                r, g, b,
+            )
+        }
+
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+
+        val outBuffer = TextureBufferImpl(
+            width,
+            height,
+            VideoFrame.TextureBuffer.Type.RGB,
+            outTexture,
+            Matrix(),
+            null,
+            yuvConverter,
+            Runnable { },
+        )
+        return VideoFrame(outBuffer, frame.rotation, frame.timestampNs)
+    }
+
+    /**
+     * Composites an image background behind the person in [frame] with [fit] (cover / contain).
+     * Correctly handles orientation (portrait vs landscape).
+     */
+    override fun composeImage(frame: VideoFrame, fit: String): VideoFrame? {
+        val buffer = frame.buffer as? VideoFrame.TextureBuffer ?: return null
+        if (maskTextureId == 0 || imageTextureId == 0) return null
+
+        val width = buffer.unscaledWidth
+        val height = buffer.unscaledHeight
+        val isOes = buffer.type == VideoFrame.TextureBuffer.Type.OES
+        val target = if (isOes) GLES11Ext.GL_TEXTURE_EXTERNAL_OES else GLES20.GL_TEXTURE_2D
+
+        if (outWidth != width || outHeight != height) {
+            createOutput(width, height)
+        }
+
+        ensureBuffers()
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo)
+        GLES20.glViewport(0, 0, width, height)
+
+        val camMatrix = convertMatrix(buffer.transformMatrix)
+        val imgMatrix = calculateImageMatrix(frame, imageWidth, imageHeight, fit)
+        val fitMode = if (fit == "contain") 1 else 0
+
+        if (isOes) {
+            if (imageProgramOes == 0) buildImageProgramOes()
+            drawImageQuad(
+                imageProgramOes,
+                imOesAPos,
+                imOesATex,
+                imOesUCamTransform,
+                imOesUImgTransform,
+                imOesUCamTex,
+                imOesUMaskTex,
+                imOesUImgTex,
+                imOesUFitMode,
+                target,
+                buffer.textureId,
+                maskTextureId,
+                imageTextureId,
+                camMatrix,
+                imgMatrix,
+                fitMode,
+            )
+        } else {
+            if (imageProgram2D == 0) buildImageProgram2D()
+            drawImageQuad(
+                imageProgram2D,
+                im2dAPos,
+                im2dATex,
+                im2dUCamTransform,
+                im2dUImgTransform,
+                im2dUCamTex,
+                im2dUMaskTex,
+                im2dUImgTex,
+                im2dUFitMode,
+                target,
+                buffer.textureId,
+                maskTextureId,
+                imageTextureId,
+                camMatrix,
+                imgMatrix,
+                fitMode,
+            )
+        }
+
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+
+        val outBuffer = TextureBufferImpl(
+            width,
+            height,
+            VideoFrame.TextureBuffer.Type.RGB,
+            outTexture,
+            Matrix(),
+            null,
+            yuvConverter,
+            Runnable { },
+        )
+        return VideoFrame(outBuffer, frame.rotation, frame.timestampNs)
+    }
+
+    /**
+     * Calculates the affine transformation matrix from FBO UV (0..1) to Image UV (0..1)
+     * supporting portrait/landscape rotations and cover/contain fitting.
+     */
+    internal fun calculateImageMatrix(
+        frame: VideoFrame,
+        imgWidth: Int,
+        imgHeight: Int,
+        fit: String,
+    ): FloatArray {
+        val rotation = frame.rotation
+        val dispW = frame.rotatedWidth.toFloat()
+        val dispH = frame.rotatedHeight.toFloat()
+        val dispAspect = if (dispH > 0f) dispW / dispH else 1.0f
+        val imgAspect = if (imgHeight > 0) imgWidth.toFloat() / imgHeight.toFloat() else 1.0f
+
+        // 2D Rotation coefficients around (0, 0) taking into account WebRTC render rotation
+        // and Android Bitmap top-down coordinate convention (row 0 is top, GL V=0 is bottom):
+        val (r00, r01, r10, r11) = when (rotation) {
+            90 -> listOf(0f, 1f, 1f, 0f)
+            180 -> listOf(-1f, 0f, 0f, 1f)
+            270 -> listOf(0f, -1f, -1f, 0f)
+            else -> listOf(1f, 0f, 0f, -1f)
+        }
+
+        // For contain: expand sampling range so pixels outside the image exceed [0, 1]
+        // to produce letterbox/pillarbox black bars.
+        // For cover: crop excess image so entire display is filled within [0, 1].
+        val (sx, sy) = if (fit == "contain") {
+            if (imgAspect >= dispAspect) {
+                Pair(1.0f, imgAspect / dispAspect)
+            } else {
+                Pair(dispAspect / imgAspect, 1.0f)
+            }
+        } else { // "cover"
+            if (imgAspect >= dispAspect) {
+                Pair(dispAspect / imgAspect, 1.0f)
+            } else {
+                Pair(1.0f, imgAspect / dispAspect)
+            }
+        }
+
+        val m00 = sx * r00
+        val m01 = sx * r01
+        val m02 = 0.5f - 0.5f * (m00 + m01)
+
+        val m10 = sy * r10
+        val m11 = sy * r11
+        val m12 = 0.5f - 0.5f * (m10 + m11)
+
+        // 4x4 OpenGL column-major matrix
+        return floatArrayOf(
+            m00, m10, 0f, 0f,
+            m01, m11, 0f, 0f,
+            0f,  0f,  1f, 0f,
+            m02, m12, 0f, 1f,
+        )
     }
 
     private fun createOutput(width: Int, height: Int) {
@@ -402,12 +687,10 @@ class GpuCompositor : FrameCompositor {
         ensureBuffers()
         GLES20.glUseProgram(program)
 
-        // Camera texture -> unit 0
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(target, camTextureId)
         GLES20.glUniform1i(uCamTex, 0)
 
-        // Mask texture -> unit 1
         GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, maskTextureId)
         GLES20.glUniform1i(uMaskTex, 1)
@@ -428,6 +711,114 @@ class GpuCompositor : FrameCompositor {
         GLES20.glDisableVertexAttribArray(aPos)
         GLES20.glDisableVertexAttribArray(aTex)
 
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(target, 0)
+    }
+
+    private fun drawColorQuad(
+        program: Int,
+        aPos: Int,
+        aTex: Int,
+        uCamTransform: Int,
+        uCamTex: Int,
+        uMaskTex: Int,
+        uColor: Int,
+        target: Int,
+        camTextureId: Int,
+        maskTextureId: Int,
+        texMatrix: FloatArray,
+        r: Float,
+        g: Float,
+        b: Float,
+    ) {
+        ensureBuffers()
+        GLES20.glUseProgram(program)
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(target, camTextureId)
+        GLES20.glUniform1i(uCamTex, 0)
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, maskTextureId)
+        GLES20.glUniform1i(uMaskTex, 1)
+
+        GLES20.glUniformMatrix4fv(uCamTransform, 1, false, texMatrix, 0)
+        GLES20.glUniform3f(uColor, r, g, b)
+
+        vertexBuffer?.position(0)
+        GLES20.glEnableVertexAttribArray(aPos)
+        GLES20.glVertexAttribPointer(aPos, 2, GLES20.GL_FLOAT, false, 0, vertexBuffer)
+
+        texCoordBuffer?.position(0)
+        GLES20.glEnableVertexAttribArray(aTex)
+        GLES20.glVertexAttribPointer(aTex, 2, GLES20.GL_FLOAT, false, 0, texCoordBuffer)
+
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        GLES20.glDisableVertexAttribArray(aPos)
+        GLES20.glDisableVertexAttribArray(aTex)
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(target, 0)
+    }
+
+    private fun drawImageQuad(
+        program: Int,
+        aPos: Int,
+        aTex: Int,
+        uCamTransform: Int,
+        uImgTransform: Int,
+        uCamTex: Int,
+        uMaskTex: Int,
+        uImgTex: Int,
+        uFitMode: Int,
+        target: Int,
+        camTextureId: Int,
+        maskTextureId: Int,
+        imageTextureId: Int,
+        camMatrix: FloatArray,
+        imgMatrix: FloatArray,
+        fitMode: Int,
+    ) {
+        ensureBuffers()
+        GLES20.glUseProgram(program)
+
+        // Camera texture -> unit 0
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(target, camTextureId)
+        GLES20.glUniform1i(uCamTex, 0)
+
+        // Mask texture -> unit 1
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, maskTextureId)
+        GLES20.glUniform1i(uMaskTex, 1)
+
+        // Image texture -> unit 2
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE2)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, imageTextureId)
+        GLES20.glUniform1i(uImgTex, 2)
+
+        GLES20.glUniformMatrix4fv(uCamTransform, 1, false, camMatrix, 0)
+        GLES20.glUniformMatrix4fv(uImgTransform, 1, false, imgMatrix, 0)
+        GLES20.glUniform1i(uFitMode, fitMode)
+
+        vertexBuffer?.position(0)
+        GLES20.glEnableVertexAttribArray(aPos)
+        GLES20.glVertexAttribPointer(aPos, 2, GLES20.GL_FLOAT, false, 0, vertexBuffer)
+
+        texCoordBuffer?.position(0)
+        GLES20.glEnableVertexAttribArray(aTex)
+        GLES20.glVertexAttribPointer(aTex, 2, GLES20.GL_FLOAT, false, 0, texCoordBuffer)
+
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        GLES20.glDisableVertexAttribArray(aPos)
+        GLES20.glDisableVertexAttribArray(aTex)
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE2)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
@@ -458,7 +849,7 @@ class GpuCompositor : FrameCompositor {
     }
 
     private fun buildReadbackProgramOes() {
-        val vertexShader = """
+        val vs = """
             attribute vec4 aPos;
             attribute vec2 aTex;
             uniform mat4 uMvp;
@@ -468,7 +859,7 @@ class GpuCompositor : FrameCompositor {
                 vTex = (uMvp * vec4(aTex, 0.0, 1.0)).xy;
             }
         """.trimIndent()
-        val fragmentShader = """
+        val fs = """
             #extension GL_OES_EGL_image_external : require
             precision mediump float;
             varying vec2 vTex;
@@ -477,7 +868,7 @@ class GpuCompositor : FrameCompositor {
                 gl_FragColor = texture2D(uTex, vTex);
             }
         """.trimIndent()
-        val p = linkProgram(vertexShader, fragmentShader)
+        val p = linkProgram(vs, fs)
         readbackProgramOes = p
         rbOesAPos = GLES20.glGetAttribLocation(p, "aPos")
         rbOesATex = GLES20.glGetAttribLocation(p, "aTex")
@@ -486,7 +877,7 @@ class GpuCompositor : FrameCompositor {
     }
 
     private fun buildReadbackProgram2D() {
-        val vertexShader = """
+        val vs = """
             attribute vec4 aPos;
             attribute vec2 aTex;
             uniform mat4 uMvp;
@@ -496,7 +887,7 @@ class GpuCompositor : FrameCompositor {
                 vTex = (uMvp * vec4(aTex, 0.0, 1.0)).xy;
             }
         """.trimIndent()
-        val fragmentShader = """
+        val fs = """
             precision mediump float;
             varying vec2 vTex;
             uniform sampler2D uTex;
@@ -504,7 +895,7 @@ class GpuCompositor : FrameCompositor {
                 gl_FragColor = texture2D(uTex, vTex);
             }
         """.trimIndent()
-        val p = linkProgram(vertexShader, fragmentShader)
+        val p = linkProgram(vs, fs)
         readbackProgram2D = p
         rb2dAPos = GLES20.glGetAttribLocation(p, "aPos")
         rb2dATex = GLES20.glGetAttribLocation(p, "aTex")
@@ -513,7 +904,7 @@ class GpuCompositor : FrameCompositor {
     }
 
     private fun buildBlurProgramOes() {
-        val vertexShader = """
+        val vs = """
             attribute vec4 aPos;
             attribute vec2 aTex;
             uniform mat4 uCamTransform;
@@ -525,7 +916,7 @@ class GpuCompositor : FrameCompositor {
                 vMaskTex = aTex;
             }
         """.trimIndent()
-        val fragmentShader = """
+        val fs = """
             #extension GL_OES_EGL_image_external : require
             precision mediump float;
             varying vec2 vCamTex;
@@ -554,7 +945,7 @@ class GpuCompositor : FrameCompositor {
                 gl_FragColor = mix(blurred, original, personAlpha);
             }
         """.trimIndent()
-        val p = linkProgram(vertexShader, fragmentShader)
+        val p = linkProgram(vs, fs)
         blurProgramOes = p
         blOesAPos = GLES20.glGetAttribLocation(p, "aPos")
         blOesATex = GLES20.glGetAttribLocation(p, "aTex")
@@ -566,7 +957,7 @@ class GpuCompositor : FrameCompositor {
     }
 
     private fun buildBlurProgram2D() {
-        val vertexShader = """
+        val vs = """
             attribute vec4 aPos;
             attribute vec2 aTex;
             uniform mat4 uCamTransform;
@@ -578,7 +969,7 @@ class GpuCompositor : FrameCompositor {
                 vMaskTex = aTex;
             }
         """.trimIndent()
-        val fragmentShader = """
+        val fs = """
             precision mediump float;
             varying vec2 vCamTex;
             varying vec2 vMaskTex;
@@ -606,7 +997,7 @@ class GpuCompositor : FrameCompositor {
                 gl_FragColor = mix(blurred, original, personAlpha);
             }
         """.trimIndent()
-        val p = linkProgram(vertexShader, fragmentShader)
+        val p = linkProgram(vs, fs)
         blurProgram2D = p
         bl2dAPos = GLES20.glGetAttribLocation(p, "aPos")
         bl2dATex = GLES20.glGetAttribLocation(p, "aTex")
@@ -615,6 +1006,182 @@ class GpuCompositor : FrameCompositor {
         bl2dUMaskTex = GLES20.glGetUniformLocation(p, "uMaskTex")
         bl2dUTexelSize = GLES20.glGetUniformLocation(p, "uTexelSize")
         bl2dUTexelScale = GLES20.glGetUniformLocation(p, "uTexelScale")
+    }
+
+    private fun buildColorProgramOes() {
+        val vs = """
+            attribute vec4 aPos;
+            attribute vec2 aTex;
+            uniform mat4 uCamTransform;
+            varying vec2 vCamTex;
+            varying vec2 vMaskTex;
+            void main() {
+                gl_Position = aPos;
+                vCamTex = (uCamTransform * vec4(aTex, 0.0, 1.0)).xy;
+                vMaskTex = aTex;
+            }
+        """.trimIndent()
+        val fs = """
+            #extension GL_OES_EGL_image_external : require
+            precision mediump float;
+            varying vec2 vCamTex;
+            varying vec2 vMaskTex;
+            uniform samplerExternalOES uCamTex;
+            uniform sampler2D uMaskTex;
+            uniform vec3 uColor;
+
+            void main() {
+                float personAlpha = texture2D(uMaskTex, vMaskTex).r;
+                vec4 original = texture2D(uCamTex, vCamTex);
+                gl_FragColor = vec4(mix(uColor, original.rgb, personAlpha), 1.0);
+            }
+        """.trimIndent()
+        val p = linkProgram(vs, fs)
+        colorProgramOes = p
+        clOesAPos = GLES20.glGetAttribLocation(p, "aPos")
+        clOesATex = GLES20.glGetAttribLocation(p, "aTex")
+        clOesUCamTransform = GLES20.glGetUniformLocation(p, "uCamTransform")
+        clOesUCamTex = GLES20.glGetUniformLocation(p, "uCamTex")
+        clOesUMaskTex = GLES20.glGetUniformLocation(p, "uMaskTex")
+        clOesUColor = GLES20.glGetUniformLocation(p, "uColor")
+    }
+
+    private fun buildColorProgram2D() {
+        val vs = """
+            attribute vec4 aPos;
+            attribute vec2 aTex;
+            uniform mat4 uCamTransform;
+            varying vec2 vCamTex;
+            varying vec2 vMaskTex;
+            void main() {
+                gl_Position = aPos;
+                vCamTex = (uCamTransform * vec4(aTex, 0.0, 1.0)).xy;
+                vMaskTex = aTex;
+            }
+        """.trimIndent()
+        val fs = """
+            precision mediump float;
+            varying vec2 vCamTex;
+            varying vec2 vMaskTex;
+            uniform sampler2D uCamTex;
+            uniform sampler2D uMaskTex;
+            uniform vec3 uColor;
+
+            void main() {
+                float personAlpha = texture2D(uMaskTex, vMaskTex).r;
+                vec4 original = texture2D(uCamTex, vCamTex);
+                gl_FragColor = vec4(mix(uColor, original.rgb, personAlpha), 1.0);
+            }
+        """.trimIndent()
+        val p = linkProgram(vs, fs)
+        colorProgram2D = p
+        cl2dAPos = GLES20.glGetAttribLocation(p, "aPos")
+        cl2dATex = GLES20.glGetAttribLocation(p, "aTex")
+        cl2dUCamTransform = GLES20.glGetUniformLocation(p, "uCamTransform")
+        cl2dUCamTex = GLES20.glGetUniformLocation(p, "uCamTex")
+        cl2dUMaskTex = GLES20.glGetUniformLocation(p, "uMaskTex")
+        cl2dUColor = GLES20.glGetUniformLocation(p, "uColor")
+    }
+
+    private fun buildImageProgramOes() {
+        val vs = """
+            attribute vec4 aPos;
+            attribute vec2 aTex;
+            uniform mat4 uCamTransform;
+            uniform mat4 uImgTransform;
+            varying vec2 vCamTex;
+            varying vec2 vMaskTex;
+            varying vec2 vImgTex;
+            void main() {
+                gl_Position = aPos;
+                vCamTex = (uCamTransform * vec4(aTex, 0.0, 1.0)).xy;
+                vMaskTex = aTex;
+                vImgTex = (uImgTransform * vec4(aTex, 0.0, 1.0)).xy;
+            }
+        """.trimIndent()
+        val fs = """
+            #extension GL_OES_EGL_image_external : require
+            precision mediump float;
+            varying vec2 vCamTex;
+            varying vec2 vMaskTex;
+            varying vec2 vImgTex;
+            uniform samplerExternalOES uCamTex;
+            uniform sampler2D uMaskTex;
+            uniform sampler2D uImgTex;
+            uniform int uFitMode;
+
+            void main() {
+                float personAlpha = texture2D(uMaskTex, vMaskTex).r;
+                vec4 original = texture2D(uCamTex, vCamTex);
+                vec4 bg;
+                if (uFitMode == 1 && (vImgTex.x < 0.0 || vImgTex.x > 1.0 || vImgTex.y < 0.0 || vImgTex.y > 1.0)) {
+                    bg = vec4(0.0, 0.0, 0.0, 1.0);
+                } else {
+                    bg = texture2D(uImgTex, clamp(vImgTex, 0.0, 1.0));
+                }
+                gl_FragColor = vec4(mix(bg.rgb, original.rgb, personAlpha), 1.0);
+            }
+        """.trimIndent()
+        val p = linkProgram(vs, fs)
+        imageProgramOes = p
+        imOesAPos = GLES20.glGetAttribLocation(p, "aPos")
+        imOesATex = GLES20.glGetAttribLocation(p, "aTex")
+        imOesUCamTransform = GLES20.glGetUniformLocation(p, "uCamTransform")
+        imOesUImgTransform = GLES20.glGetUniformLocation(p, "uImgTransform")
+        imOesUCamTex = GLES20.glGetUniformLocation(p, "uCamTex")
+        imOesUMaskTex = GLES20.glGetUniformLocation(p, "uMaskTex")
+        imOesUImgTex = GLES20.glGetUniformLocation(p, "uImgTex")
+        imOesUFitMode = GLES20.glGetUniformLocation(p, "uFitMode")
+    }
+
+    private fun buildImageProgram2D() {
+        val vs = """
+            attribute vec4 aPos;
+            attribute vec2 aTex;
+            uniform mat4 uCamTransform;
+            uniform mat4 uImgTransform;
+            varying vec2 vCamTex;
+            varying vec2 vMaskTex;
+            varying vec2 vImgTex;
+            void main() {
+                gl_Position = aPos;
+                vCamTex = (uCamTransform * vec4(aTex, 0.0, 1.0)).xy;
+                vMaskTex = aTex;
+                vImgTex = (uImgTransform * vec4(aTex, 0.0, 1.0)).xy;
+            }
+        """.trimIndent()
+        val fs = """
+            precision mediump float;
+            varying vec2 vCamTex;
+            varying vec2 vMaskTex;
+            varying vec2 vImgTex;
+            uniform sampler2D uCamTex;
+            uniform sampler2D uMaskTex;
+            uniform sampler2D uImgTex;
+            uniform int uFitMode;
+
+            void main() {
+                float personAlpha = texture2D(uMaskTex, vMaskTex).r;
+                vec4 original = texture2D(uCamTex, vCamTex);
+                vec4 bg;
+                if (uFitMode == 1 && (vImgTex.x < 0.0 || vImgTex.x > 1.0 || vImgTex.y < 0.0 || vImgTex.y > 1.0)) {
+                    bg = vec4(0.0, 0.0, 0.0, 1.0);
+                } else {
+                    bg = texture2D(uImgTex, clamp(vImgTex, 0.0, 1.0));
+                }
+                gl_FragColor = vec4(mix(bg.rgb, original.rgb, personAlpha), 1.0);
+            }
+        """.trimIndent()
+        val p = linkProgram(vs, fs)
+        imageProgram2D = p
+        im2dAPos = GLES20.glGetAttribLocation(p, "aPos")
+        im2dATex = GLES20.glGetAttribLocation(p, "aTex")
+        im2dUCamTransform = GLES20.glGetUniformLocation(p, "uCamTransform")
+        im2dUImgTransform = GLES20.glGetUniformLocation(p, "uImgTransform")
+        im2dUCamTex = GLES20.glGetUniformLocation(p, "uCamTex")
+        im2dUMaskTex = GLES20.glGetUniformLocation(p, "uMaskTex")
+        im2dUImgTex = GLES20.glGetUniformLocation(p, "uImgTex")
+        im2dUFitMode = GLES20.glGetUniformLocation(p, "uFitMode")
     }
 
     private fun compileShader(type: Int, source: String): Int {
@@ -665,6 +1232,10 @@ class GpuCompositor : FrameCompositor {
             GLES20.glDeleteTextures(1, intArrayOf(maskTextureId), 0)
             maskTextureId = 0
         }
+        if (imageTextureId != 0) {
+            GLES20.glDeleteTextures(1, intArrayOf(imageTextureId), 0)
+            imageTextureId = 0
+        }
         if (readbackProgramOes != 0) {
             GLES20.glDeleteProgram(readbackProgramOes)
             readbackProgramOes = 0
@@ -680,6 +1251,22 @@ class GpuCompositor : FrameCompositor {
         if (blurProgram2D != 0) {
             GLES20.glDeleteProgram(blurProgram2D)
             blurProgram2D = 0
+        }
+        if (colorProgramOes != 0) {
+            GLES20.glDeleteProgram(colorProgramOes)
+            colorProgramOes = 0
+        }
+        if (colorProgram2D != 0) {
+            GLES20.glDeleteProgram(colorProgram2D)
+            colorProgram2D = 0
+        }
+        if (imageProgramOes != 0) {
+            GLES20.glDeleteProgram(imageProgramOes)
+            imageProgramOes = 0
+        }
+        if (imageProgram2D != 0) {
+            GLES20.glDeleteProgram(imageProgram2D)
+            imageProgram2D = 0
         }
         yuvConverter.release()
     }

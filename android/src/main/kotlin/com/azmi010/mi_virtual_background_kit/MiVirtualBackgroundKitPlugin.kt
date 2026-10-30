@@ -35,9 +35,15 @@ class MiVirtualBackgroundKitPlugin :
     private var frameProcessor: FrameProcessor? = null
 
     private var appContext: android.content.Context? = null
+    private var flutterAssets: FlutterPlugin.FlutterAssets? = null
+
+    internal var imageDecoder: (String, Any?) -> android.graphics.Bitmap? = { type, data ->
+        decodeImage(type, data)
+    }
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         appContext = flutterPluginBinding.applicationContext
+        flutterAssets = flutterPluginBinding.flutterAssets
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, "mi_virtual_background_kit")
         channel.setMethodCallHandler(this)
     }
@@ -71,9 +77,39 @@ class MiVirtualBackgroundKitPlugin :
                 val type = call.argument<String>("type")
                 when (type) {
                     "blur" -> {
-                        val radius = call.argument<Double>("radius") ?: 12.0
+                        val radius = (call.argument<Number>("radius")?.toDouble() ?: 12.0).toFloat()
                         try {
-                            frameProcessor?.setBlurEffect(radius.toFloat())
+                            frameProcessor?.setBlurEffect(radius)
+                            result.success(null)
+                        } catch (t: Throwable) {
+                            result.error("modelLoadFailed", t.message, null)
+                        }
+                    }
+                    "color" -> {
+                        val color = (call.argument<Number>("color")?.toLong() ?: 0xFF000000).toInt()
+                        try {
+                            frameProcessor?.setColorEffect(color)
+                            result.success(null)
+                        } catch (t: Throwable) {
+                            result.error("modelLoadFailed", t.message, null)
+                        }
+                    }
+                    "image" -> {
+                        val fit = call.argument<String>("fit") ?: "cover"
+                        val sourceType = call.argument<String>("sourceType") ?: "asset"
+                        val data = call.argument<Any>("data")
+                        val bitmap = try {
+                            imageDecoder(sourceType, data)
+                        } catch (t: Throwable) {
+                            result.error("invalidImage", "Failed to decode image: ${t.message}", null)
+                            return
+                        }
+                        if (bitmap == null) {
+                            result.error("invalidImage", "Failed to decode image from $sourceType", null)
+                            return
+                        }
+                        try {
+                            frameProcessor?.setImageEffect(bitmap, fit)
                             result.success(null)
                         } catch (t: Throwable) {
                             result.error("modelLoadFailed", t.message, null)
@@ -103,18 +139,44 @@ class MiVirtualBackgroundKitPlugin :
                 if (ok) spikeProcessor = processor
                 result.success(ok)
             }
-            "spikeFrameCount" -> result.success(spikeProcessor?.frameCount ?: 0)
+            "spikeFrameCount" -> {
+                val count = spikeProcessor?.frameCount ?: frameProcessor?.frameCount ?: 0
+                result.success(count)
+            }
             "spikeInfo" -> {
-                val p = spikeProcessor
-                result.success(
-                    mapOf(
-                        "frames" to (p?.frameCount ?: 0),
-                        "bufferType" to (p?.bufferType ?: ""),
-                        "rotation" to (p?.rotation ?: 0),
-                        "width" to (p?.width ?: 0),
-                        "height" to (p?.height ?: 0),
-                    ),
-                )
+                val sp = spikeProcessor
+                val fp = frameProcessor
+                if (sp != null) {
+                    result.success(
+                        mapOf(
+                            "frames" to sp.frameCount,
+                            "bufferType" to (sp.bufferType ?: ""),
+                            "rotation" to sp.rotation,
+                            "width" to sp.width,
+                            "height" to sp.height,
+                        ),
+                    )
+                } else if (fp != null) {
+                    result.success(
+                        mapOf(
+                            "frames" to fp.frameCount,
+                            "bufferType" to "TextureBuffer",
+                            "rotation" to fp.lastRotation,
+                            "width" to fp.lastWidth,
+                            "height" to fp.lastHeight,
+                        ),
+                    )
+                } else {
+                    result.success(
+                        mapOf(
+                            "frames" to 0,
+                            "bufferType" to "",
+                            "rotation" to 0,
+                            "width" to 0,
+                            "height" to 0,
+                        ),
+                    )
+                }
             }
             "spikeSetEnabled" -> {
                 spikeProcessor?.enabled = call.argument<Boolean>("enabled") ?: true
@@ -414,6 +476,30 @@ class MiVirtualBackgroundKitPlugin :
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         releaseFrameProcessor()
         channel.setMethodCallHandler(null)
+        flutterAssets = null
+        appContext = null
+    }
+
+    private fun decodeImage(sourceType: String, data: Any?): android.graphics.Bitmap? {
+        if (data == null) return null
+        return when (sourceType) {
+            "asset" -> {
+                val assetPath = data as? String ?: return null
+                val key = flutterAssets?.getAssetFilePathByName(assetPath) ?: assetPath
+                appContext?.assets?.open(key)?.use {
+                    android.graphics.BitmapFactory.decodeStream(it)
+                }
+            }
+            "file" -> {
+                val path = data as? String ?: return null
+                android.graphics.BitmapFactory.decodeFile(path)
+            }
+            "bytes" -> {
+                val bytes = data as? ByteArray ?: return null
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            }
+            else -> null
+        }
     }
 
     /** Detaches the production processor from its cached track; idempotent. */

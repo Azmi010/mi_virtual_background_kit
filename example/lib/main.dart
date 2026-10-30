@@ -1,9 +1,9 @@
 import 'dart:async';
-
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:mi_virtual_background_kit/mi_virtual_background_kit.dart';
 
@@ -37,9 +37,11 @@ class _SpikePageState extends State<SpikePage> {
   int _lastCount = 0;
   bool _spiked = false;
   bool _prodAttached = false;
-  bool _blurOn = false;
+  String _activeEffectName = 'None';
   double _blurRadius = 20.0;
   bool _transformOn = true;
+  bool _hideControls = false;
+  Uint8List? _testImageBytes;
   bool _benchmarked = false;
   int _gpuMicros = 0;
   int _gpuCount = 0;
@@ -172,21 +174,75 @@ class _SpikePageState extends State<SpikePage> {
     );
   }
 
-  Future<void> _toggleBlur() async {
-    final next = !_blurOn;
-    if (next) {
-      await _kit.setEffect(BlurEffect(radius: _blurRadius));
-    } else {
-      await _kit.setEffect(const NoEffect());
-    }
-    setState(() => _blurOn = next);
-    debugPrint('PROD blurOn=$next radius=$_blurRadius');
+  Future<Uint8List> _ensureTestPatternImage() async {
+    final existing = _testImageBytes;
+    if (existing != null) return existing;
+    const width = 640;
+    const height = 480;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, const Rect.fromLTWH(0.0, 0.0, 640.0, 480.0));
+
+    // Sky-blue to orange gradient
+    final paint = Paint()
+      ..shader = ui.Gradient.linear(
+        Offset.zero,
+        const Offset(0.0, 480.0),
+        [const Color(0xFF1E88E5), const Color(0xFFFF6F00)],
+      );
+    canvas.drawRect(const Rect.fromLTWH(0.0, 0.0, 640.0, 480.0), paint);
+
+    // Upward arrow
+    final arrowPaint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 14
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    final path = Path()
+      ..moveTo(width * 0.5, height * 0.2)
+      ..lineTo(width * 0.35, height * 0.45)
+      ..moveTo(width * 0.5, height * 0.2)
+      ..lineTo(width * 0.65, height * 0.45)
+      ..moveTo(width * 0.5, height * 0.2)
+      ..lineTo(width * 0.5, height * 0.8);
+    canvas.drawPath(path, arrowPaint);
+
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(width, height);
+    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+    final bytes = byteData!.buffer.asUint8List();
+    _testImageBytes = bytes;
+    return bytes;
+  }
+
+  Future<void> _applyNone() async {
+    await _kit.setEffect(const NoEffect());
+    setState(() => _activeEffectName = 'None');
+    debugPrint('PROD effect: None');
+  }
+
+  Future<void> _applyBlur() async {
+    await _kit.setEffect(BlurEffect(radius: _blurRadius));
+    setState(() => _activeEffectName = 'Blur (${_blurRadius.toInt()})');
+    debugPrint('PROD effect: Blur radius=$_blurRadius');
+  }
+
+  Future<void> _applyColor(Color color, String name) async {
+    await _kit.setEffect(ColorEffect(color));
+    setState(() => _activeEffectName = 'Color ($name)');
+    debugPrint('PROD effect: Color $name');
+  }
+
+  Future<void> _applyImage(BackgroundFit fit) async {
+    final bytes = await _ensureTestPatternImage();
+    await _kit.setEffect(ImageEffect.bytes(bytes, fit: fit));
+    setState(() => _activeEffectName = 'Image (${fit.name})');
+    debugPrint('PROD effect: Image fit=${fit.name}');
   }
 
   Future<void> _changeRadius(double radius) async {
     setState(() => _blurRadius = radius);
-    if (_blurOn) {
-      await _kit.setEffect(BlurEffect(radius: radius));
+    if (_activeEffectName.startsWith('Blur')) {
+      await _applyBlur();
     }
   }
 
@@ -204,64 +260,184 @@ class _SpikePageState extends State<SpikePage> {
     super.dispose();
   }
 
+  Widget _buildControls() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            _status,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 11),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'frames: $_frames  fps: $_fps  mode: ${_prodAttached ? "PROD" : "SPIKE"}',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+          ),
+          if (!_prodAttached) ...[
+            Text(
+              'gpu: ${_gpuMicros}us  n=$_gpuCount  type=$_gpuType',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12),
+            ),
+          ],
+          const SizedBox(height: 6),
+          if (_prodAttached) ...[
+            Text(
+              'Active Effect: $_activeEffectName',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              alignment: WrapAlignment.center,
+              children: [
+                ElevatedButton(
+                  onPressed: _applyNone,
+                  child: const Text('None'),
+                ),
+                ElevatedButton(
+                  onPressed: _applyBlur,
+                  child: const Text('Blur'),
+                ),
+                ElevatedButton(
+                  onPressed: () => _applyColor(const Color(0xFF00796B), 'Teal'),
+                  child: const Text('Teal'),
+                ),
+                ElevatedButton(
+                  onPressed: () => _applyImage(BackgroundFit.cover),
+                  child: const Text('Img Cover'),
+                ),
+                ElevatedButton(
+                  onPressed: () => _applyImage(BackgroundFit.contain),
+                  child: const Text('Img Contain'),
+                ),
+              ],
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('Radius: ${_blurRadius.toInt()}'),
+                Expanded(
+                  child: Slider(
+                    value: _blurRadius,
+                    min: 5,
+                    max: 50,
+                    divisions: 9,
+                    onChanged: _changeRadius,
+                  ),
+                ),
+              ],
+            ),
+          ] else
+            ElevatedButton(
+              onPressed: _spiked ? _toggleTransform : null,
+              child: Text(
+                _transformOn ? 'Disable transform' : 'Enable transform',
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Spike T0.4 frame hook')),
-      body: Column(
-        children: [
-          Expanded(
-            child: RTCVideoView(
-              _renderer,
-              mirror: true,
-              objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-            ),
+      appBar: AppBar(
+        title: const Text('MiVirtualBackgroundKit'),
+        actions: [
+          IconButton(
+            tooltip: _hideControls ? 'Show controls' : 'Hide controls',
+            icon: Icon(_hideControls ? Icons.visibility : Icons.visibility_off),
+            onPressed: () => setState(() => _hideControls = !_hideControls),
           ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
+        ],
+      ),
+      body: OrientationBuilder(
+        builder: (context, orientation) {
+          final isLandscape = orientation == Orientation.landscape;
+
+          final video = Stack(
+            children: [
+              Positioned.fill(
+                child: RTCVideoView(
+                  _renderer,
+                  mirror: true,
+                  objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                ),
+              ),
+              if (_hideControls) ...[
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: FloatingActionButton.small(
+                    tooltip: 'Show controls',
+                    backgroundColor: Colors.black54,
+                    foregroundColor: Colors.white,
+                    onPressed: () => setState(() => _hideControls = false),
+                    child: const Icon(Icons.tune),
+                  ),
+                ),
+                Positioned(
+                  top: 12,
+                  left: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      'fps: $_fps  frames: $_frames  effect: $_activeEffectName',
+                      style: const TextStyle(color: Colors.white, fontSize: 11),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          );
+
+          if (isLandscape) {
+            return Row(
               children: [
-                Text(_status, style: const TextStyle(fontSize: 11)),
-                Text(
-                  'frames: $_frames  fps: $_fps  transform: $_transformOn',
-                  style: const TextStyle(fontSize: 13),
-                ),
-                Text(
-                  'gpu: ${_gpuMicros}us  n=$_gpuCount  type=$_gpuType',
-                  style: const TextStyle(fontSize: 13),
-                ),
-                const SizedBox(height: 8),
-                if (_prodAttached) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('Blur Radius: ${_blurRadius.toInt()}'),
-                      Expanded(
-                        child: Slider(
-                          value: _blurRadius,
-                          min: 5,
-                          max: 50,
-                          divisions: 9,
-                          onChanged: _changeRadius,
+                Expanded(child: video),
+                if (!_hideControls)
+                  SizedBox(
+                    width: 280,
+                    child: Material(
+                      elevation: 4,
+                      child: SafeArea(
+                        child: SingleChildScrollView(
+                          child: _buildControls(),
                         ),
                       ),
-                    ],
-                  ),
-                  ElevatedButton(
-                    onPressed: _toggleBlur,
-                    child: Text(_blurOn ? 'Disable Blur' : 'Enable Blur'),
-                  ),
-                ] else
-                  ElevatedButton(
-                    onPressed: _spiked ? _toggleTransform : null,
-                    child: Text(
-                      _transformOn ? 'Disable transform' : 'Enable transform',
                     ),
                   ),
               ],
-            ),
-          ),
-        ],
+            );
+          }
+
+          return Column(
+            children: [
+              Expanded(child: video),
+              if (!_hideControls)
+                Material(
+                  elevation: 4,
+                  child: SafeArea(
+                    top: false,
+                    child: _buildControls(),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
