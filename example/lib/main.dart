@@ -36,6 +36,9 @@ class _SpikePageState extends State<SpikePage> {
   int _fps = 0;
   int _lastCount = 0;
   bool _spiked = false;
+  bool _prodAttached = false;
+  bool _blurOn = false;
+  double _blurRadius = 20.0;
   bool _transformOn = true;
   bool _benchmarked = false;
   int _gpuMicros = 0;
@@ -69,8 +72,9 @@ class _SpikePageState extends State<SpikePage> {
       const prodMode = bool.fromEnvironment('PROD_ATTACH');
       debugPrint('PROD_ATTACH=$prodMode');
       if (prodMode) {
-        // T3.2 verification mode: production processor only, no spike chain.
+        // T3.2 / T3.3 verification mode: production processor with blur compositing.
         await _kit.attach(track);
+        setState(() => _prodAttached = true);
         debugPrint('PROD attached track=${track.id}');
       } else {
         final ok = await _kit.spikeAttach(track.id!);
@@ -168,6 +172,24 @@ class _SpikePageState extends State<SpikePage> {
     );
   }
 
+  Future<void> _toggleBlur() async {
+    final next = !_blurOn;
+    if (next) {
+      await _kit.setEffect(BlurEffect(radius: _blurRadius));
+    } else {
+      await _kit.setEffect(const NoEffect());
+    }
+    setState(() => _blurOn = next);
+    debugPrint('PROD blurOn=$next radius=$_blurRadius');
+  }
+
+  Future<void> _changeRadius(double radius) async {
+    setState(() => _blurRadius = radius);
+    if (_blurOn) {
+      await _kit.setEffect(BlurEffect(radius: radius));
+    }
+  }
+
   Future<void> _toggleTransform() async {
     final next = !_transformOn;
     await _kit.spikeSetEnabled(next);
@@ -209,12 +231,33 @@ class _SpikePageState extends State<SpikePage> {
                   style: const TextStyle(fontSize: 13),
                 ),
                 const SizedBox(height: 8),
-                ElevatedButton(
-                  onPressed: _spiked ? _toggleTransform : null,
-                  child: Text(
-                    _transformOn ? 'Disable transform' : 'Enable transform',
+                if (_prodAttached) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text('Blur Radius: ${_blurRadius.toInt()}'),
+                      Expanded(
+                        child: Slider(
+                          value: _blurRadius,
+                          min: 5,
+                          max: 50,
+                          divisions: 9,
+                          onChanged: _changeRadius,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
+                  ElevatedButton(
+                    onPressed: _toggleBlur,
+                    child: Text(_blurOn ? 'Disable Blur' : 'Enable Blur'),
+                  ),
+                ] else
+                  ElevatedButton(
+                    onPressed: _spiked ? _toggleTransform : null,
+                    child: Text(
+                      _transformOn ? 'Disable transform' : 'Enable transform',
+                    ),
+                  ),
               ],
             ),
           ),

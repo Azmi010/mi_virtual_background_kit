@@ -56,7 +56,7 @@ class MiVirtualBackgroundKitPlugin :
                 }
                 // Re-attach replaces: never stack processors on one track.
                 releaseFrameProcessor()
-                val processor = FrameProcessor()
+                val processor = FrameProcessor(context = appContext)
                 val track = attachFrameProcessor(trackId, processor)
                 if (track == null) {
                     result.error("invalidTrack", "no local video track: $trackId", null)
@@ -66,6 +66,25 @@ class MiVirtualBackgroundKitPlugin :
                 frameProcessor = processor
                 android.util.Log.i("MiVBG", "attached processor to $trackId")
                 result.success(null)
+            }
+            "setEffect" -> {
+                val type = call.argument<String>("type")
+                when (type) {
+                    "blur" -> {
+                        val radius = call.argument<Double>("radius") ?: 12.0
+                        try {
+                            frameProcessor?.setBlurEffect(radius.toFloat())
+                            result.success(null)
+                        } catch (t: Throwable) {
+                            result.error("modelLoadFailed", t.message, null)
+                        }
+                    }
+                    "none" -> {
+                        frameProcessor?.clearEffect()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
             }
             "detach" -> {
                 val had = frameProcessor != null
@@ -399,7 +418,9 @@ class MiVirtualBackgroundKitPlugin :
 
     /** Detaches the production processor from its cached track; idempotent. */
     private fun releaseFrameProcessor() {
-        detachFrameProcessor(attachedTrack, frameProcessor)
+        val p = frameProcessor
+        detachFrameProcessor(attachedTrack, p)
+        p?.release()
         attachedTrack = null
         frameProcessor = null
     }

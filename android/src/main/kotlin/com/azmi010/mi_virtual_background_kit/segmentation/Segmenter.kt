@@ -25,10 +25,18 @@ data class PersonMask(
 )
 
 /**
+ * Common interface for person segmenters.
+ */
+interface MaskSegmenter : AutoCloseable {
+    fun segment(bitmap: Bitmap): PersonMask
+    override fun close()
+}
+
+/**
  * Person segmentation with MediaPipe Image Segmenter and the bundled
  * `selfie_segmenter.tflite` model, CPU delegate (ADR 0001 §3).
  */
-class Segmenter(context: Context) {
+class Segmenter(context: Context) : MaskSegmenter {
 
     private val segmenter: ImageSegmenter = try {
         ImageSegmenter.createFromOptions(
@@ -55,7 +63,7 @@ class Segmenter(context: Context) {
      * Segments [bitmap]; mask resolution equals the bitmap size.
      * Synchronous — MediaPipe segment() blocks the calling thread.
      */
-    fun segment(bitmap: Bitmap): PersonMask {
+    override fun segment(bitmap: Bitmap): PersonMask {
         val result = try {
             segmenter.segment(BitmapImageBuilder(bitmap).build())
         } catch (t: Throwable) {
@@ -70,7 +78,7 @@ class Segmenter(context: Context) {
         return PersonMask(alpha, width, height)
     }
 
-    fun close() = segmenter.close()
+    override fun close() = segmenter.close()
 
     companion object {
         const val MODEL_ASSET = "selfie_segmenter.tflite"

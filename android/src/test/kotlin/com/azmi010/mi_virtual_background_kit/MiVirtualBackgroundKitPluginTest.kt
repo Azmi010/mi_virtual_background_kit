@@ -50,4 +50,26 @@ internal class MiVirtualBackgroundKitPluginTest {
 
         Mockito.verify(mockResult).success(null)
     }
+
+    @Test
+    fun onMethodCall_setEffectNone_succeeds() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+
+        val call = MethodCall("setEffect", mapOf("type" to "none"))
+        val mockResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(call, mockResult)
+
+        Mockito.verify(mockResult).success(null)
+    }
+
+    @Test
+    fun onMethodCall_setEffectUnknown_notImplemented() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+
+        val call = MethodCall("setEffect", mapOf("type" to "unsupported_type"))
+        val mockResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(call, mockResult)
+
+        Mockito.verify(mockResult).notImplemented()
+    }
 }
