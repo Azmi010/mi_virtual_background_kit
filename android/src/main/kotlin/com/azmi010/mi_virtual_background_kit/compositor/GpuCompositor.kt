@@ -44,6 +44,10 @@ class GpuCompositor : FrameCompositor {
 
     private val yuvConverter = YuvConverter()
 
+    private val tempMatrixValues = FloatArray(9)
+    private val camMatrixArray = FloatArray(16)
+    private val imgMatrixArray = FloatArray(16)
+
     private var fbo = 0
     private var outTexture = 0
     private var outWidth = 0
@@ -192,6 +196,7 @@ class GpuCompositor : FrameCompositor {
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo)
         GLES20.glViewport(0, 0, width, height)
 
+        val texMatrix = convertMatrix(buffer.transformMatrix, camMatrixArray)
         if (isOes) {
             if (readbackProgramOes == 0) buildReadbackProgramOes()
             drawQuad(
@@ -202,7 +207,7 @@ class GpuCompositor : FrameCompositor {
                 rbOesUTex,
                 target,
                 buffer.textureId,
-                convertMatrix(buffer.transformMatrix),
+                texMatrix,
             )
         } else {
             if (readbackProgram2D == 0) buildReadbackProgram2D()
@@ -214,7 +219,7 @@ class GpuCompositor : FrameCompositor {
                 rb2dUTex,
                 target,
                 buffer.textureId,
-                convertMatrix(buffer.transformMatrix),
+                texMatrix,
             )
         }
 
@@ -321,7 +326,7 @@ class GpuCompositor : FrameCompositor {
         GLES20.glViewport(0, 0, width, height)
 
         val texelScale = radius / 25.0f
-        val texMatrix = convertMatrix(buffer.transformMatrix)
+        val texMatrix = convertMatrix(buffer.transformMatrix, camMatrixArray)
 
         if (isOes) {
             if (blurProgramOes == 0) buildBlurProgramOes()
@@ -370,10 +375,10 @@ class GpuCompositor : FrameCompositor {
             height,
             VideoFrame.TextureBuffer.Type.RGB,
             outTexture,
-            Matrix(),
+            IDENTITY_MATRIX,
             null,
             yuvConverter,
-            Runnable { },
+            EMPTY_RELEASE_CALLBACK,
         )
         return VideoFrame(outBuffer, frame.rotation, frame.timestampNs)
     }
@@ -401,7 +406,7 @@ class GpuCompositor : FrameCompositor {
         val r = ((color shr 16) and 0xFF) / 255.0f
         val g = ((color shr 8) and 0xFF) / 255.0f
         val b = (color and 0xFF) / 255.0f
-        val texMatrix = convertMatrix(buffer.transformMatrix)
+        val texMatrix = convertMatrix(buffer.transformMatrix, camMatrixArray)
 
         if (isOes) {
             if (colorProgramOes == 0) buildColorProgramOes()
@@ -444,10 +449,10 @@ class GpuCompositor : FrameCompositor {
             height,
             VideoFrame.TextureBuffer.Type.RGB,
             outTexture,
-            Matrix(),
+            IDENTITY_MATRIX,
             null,
             yuvConverter,
-            Runnable { },
+            EMPTY_RELEASE_CALLBACK,
         )
         return VideoFrame(outBuffer, frame.rotation, frame.timestampNs)
     }
@@ -473,8 +478,8 @@ class GpuCompositor : FrameCompositor {
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo)
         GLES20.glViewport(0, 0, width, height)
 
-        val camMatrix = convertMatrix(buffer.transformMatrix)
-        val imgMatrix = calculateImageMatrix(frame, imageWidth, imageHeight, fit)
+        val camMatrix = convertMatrix(buffer.transformMatrix, camMatrixArray)
+        val imgMatrix = calculateImageMatrix(frame, imageWidth, imageHeight, fit, imgMatrixArray)
         val fitMode = if (fit == "contain") 1 else 0
 
         if (isOes) {
@@ -526,10 +531,10 @@ class GpuCompositor : FrameCompositor {
             height,
             VideoFrame.TextureBuffer.Type.RGB,
             outTexture,
-            Matrix(),
+            IDENTITY_MATRIX,
             null,
             yuvConverter,
-            Runnable { },
+            EMPTY_RELEASE_CALLBACK,
         )
         return VideoFrame(outBuffer, frame.rotation, frame.timestampNs)
     }
@@ -543,6 +548,7 @@ class GpuCompositor : FrameCompositor {
         imgWidth: Int,
         imgHeight: Int,
         fit: String,
+        out: FloatArray = FloatArray(16),
     ): FloatArray {
         val rotation = frame.rotation
         val dispW = frame.rotatedWidth.toFloat()
@@ -550,29 +556,42 @@ class GpuCompositor : FrameCompositor {
         val dispAspect = if (dispH > 0f) dispW / dispH else 1.0f
         val imgAspect = if (imgHeight > 0) imgWidth.toFloat() / imgHeight.toFloat() else 1.0f
 
-        // 2D Rotation coefficients around (0, 0) taking into account WebRTC render rotation
-        // and Android Bitmap top-down coordinate convention (row 0 is top, GL V=0 is bottom):
-        val (r00, r01, r10, r11) = when (rotation) {
-            90 -> listOf(0f, 1f, 1f, 0f)
-            180 -> listOf(-1f, 0f, 0f, 1f)
-            270 -> listOf(0f, -1f, -1f, 0f)
-            else -> listOf(1f, 0f, 0f, -1f)
+        var r00 = 1f
+        var r01 = 0f
+        var r10 = 0f
+        var r11 = -1f
+        when (rotation) {
+            90 -> {
+                r00 = 0f; r01 = 1f; r10 = 1f; r11 = 0f
+            }
+            180 -> {
+                r00 = -1f; r01 = 0f; r10 = 0f; r11 = 1f
+            }
+            270 -> {
+                r00 = 0f; r01 = -1f; r10 = -1f; r11 = 0f
+            }
+            else -> {
+                r00 = 1f; r01 = 0f; r10 = 0f; r11 = -1f
+            }
         }
 
-        // For contain: expand sampling range so pixels outside the image exceed [0, 1]
-        // to produce letterbox/pillarbox black bars.
-        // For cover: crop excess image so entire display is filled within [0, 1].
-        val (sx, sy) = if (fit == "contain") {
+        var sx = 1.0f
+        var sy = 1.0f
+        if (fit == "contain") {
             if (imgAspect >= dispAspect) {
-                Pair(1.0f, imgAspect / dispAspect)
+                sx = 1.0f
+                sy = imgAspect / dispAspect
             } else {
-                Pair(dispAspect / imgAspect, 1.0f)
+                sx = dispAspect / imgAspect
+                sy = 1.0f
             }
-        } else { // "cover"
+        } else {
             if (imgAspect >= dispAspect) {
-                Pair(dispAspect / imgAspect, 1.0f)
+                sx = dispAspect / imgAspect
+                sy = 1.0f
             } else {
-                Pair(1.0f, imgAspect / dispAspect)
+                sx = 1.0f
+                sy = imgAspect / dispAspect
             }
         }
 
@@ -585,12 +604,11 @@ class GpuCompositor : FrameCompositor {
         val m12 = 0.5f - 0.5f * (m10 + m11)
 
         // 4x4 OpenGL column-major matrix
-        return floatArrayOf(
-            m00, m10, 0f, 0f,
-            m01, m11, 0f, 0f,
-            0f,  0f,  1f, 0f,
-            m02, m12, 0f, 1f,
-        )
+        out[0] = m00; out[1] = m10; out[2] = 0f; out[3] = 0f
+        out[4] = m01; out[5] = m11; out[6] = 0f; out[7] = 0f
+        out[8] = 0f;  out[9] = 0f;  out[10] = 1f; out[11] = 0f
+        out[12] = m02; out[13] = m12; out[14] = 0f; out[15] = 1f
+        return out
     }
 
     private fun createOutput(width: Int, height: Int) {
@@ -825,27 +843,21 @@ class GpuCompositor : FrameCompositor {
         GLES20.glBindTexture(target, 0)
     }
 
-    private fun convertMatrix(matrix: Matrix?): FloatArray {
+    private fun convertMatrix(matrix: Matrix?, out: FloatArray = camMatrixArray): FloatArray {
         if (matrix == null) {
-            return floatArrayOf(
-                1f, 0f, 0f, 0f,
-                0f, 1f, 0f, 0f,
-                0f, 0f, 1f, 0f,
-                0f, 0f, 0f, 1f,
-            )
+            out[0] = 1f; out[1] = 0f; out[2] = 0f; out[3] = 0f
+            out[4] = 0f; out[5] = 1f; out[6] = 0f; out[7] = 0f
+            out[8] = 0f; out[9] = 0f; out[10] = 1f; out[11] = 0f
+            out[12] = 0f; out[13] = 0f; out[14] = 0f; out[15] = 1f
+            return out
         }
-        return try {
-            RendererCommon.convertMatrixFromAndroidGraphicsMatrix(matrix)
-        } catch (_: Throwable) {
-            val v = FloatArray(9)
-            matrix.getValues(v)
-            floatArrayOf(
-                v[Matrix.MSCALE_X], v[Matrix.MSKEW_Y], 0f, v[Matrix.MPERSP_0],
-                v[Matrix.MSKEW_X], v[Matrix.MSCALE_Y], 0f, v[Matrix.MPERSP_1],
-                0f, 0f, 1f, 0f,
-                v[Matrix.MTRANS_X], v[Matrix.MTRANS_Y], 0f, v[Matrix.MPERSP_2],
-            )
-        }
+        matrix.getValues(tempMatrixValues)
+        val v = tempMatrixValues
+        out[0] = v[Matrix.MSCALE_X]; out[1] = v[Matrix.MSKEW_Y]; out[2] = 0f; out[3] = v[Matrix.MPERSP_0]
+        out[4] = v[Matrix.MSKEW_X]; out[5] = v[Matrix.MSCALE_Y]; out[6] = 0f; out[7] = v[Matrix.MPERSP_1]
+        out[8] = 0f; out[9] = 0f; out[10] = 1f; out[11] = 0f
+        out[12] = v[Matrix.MTRANS_X]; out[13] = v[Matrix.MTRANS_Y]; out[14] = 0f; out[15] = v[Matrix.MPERSP_2]
+        return out
     }
 
     private fun buildReadbackProgramOes() {
@@ -1273,5 +1285,7 @@ class GpuCompositor : FrameCompositor {
 
     companion object {
         private const val TAG = "MiVBGCompositor"
+        private val IDENTITY_MATRIX = Matrix()
+        private val EMPTY_RELEASE_CALLBACK = Runnable { }
     }
 }

@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 internal class FrameProcessorTest {
@@ -309,5 +310,51 @@ internal class FrameProcessorTest {
         assertEquals(270, processor.lastRotation)
         assertEquals(480, processor.lastWidth)
         assertEquals(640, processor.lastHeight)
+    }
+
+    @Test
+    fun calculateImageMatrix_reusesPreallocatedBuffer() {
+        val compositor = GpuCompositor()
+        val mockBuffer = Mockito.mock(VideoFrame.TextureBuffer::class.java)
+        Mockito.`when`(mockBuffer.width).thenReturn(640)
+        Mockito.`when`(mockBuffer.height).thenReturn(480)
+
+        val frame = VideoFrame(mockBuffer, 0, 0L)
+        val reusableArray = FloatArray(16)
+        val result = compositor.calculateImageMatrix(frame, 640, 480, "cover", reusableArray)
+
+        assertSame(reusableArray, result)
+        assertEquals(1.0f, result[0], 0.001f)
+    }
+
+    @Test
+    fun segmentationWorker_reusesPooledBuffersAcrossMultipleFrames() {
+        val fakeSegmenter = FakeSegmenter()
+        val fakeCompositor = FakeCompositor()
+        var bitmapAllocations = 0
+
+        val mockTextureBuffer = Mockito.mock(VideoFrame.TextureBuffer::class.java)
+        val inputFrame = VideoFrame(mockTextureBuffer, 0, 1000L)
+
+        val processor = FrameProcessor(
+            segmenterProvider = { fakeSegmenter },
+            compositorProvider = { fakeCompositor },
+            bitmapProvider = { _, _ ->
+                bitmapAllocations++
+                createTestBitmap()
+            },
+        )
+        processor.setBlurEffect(10.0f)
+
+        // Process multiple frame cycles (triggering segmentation multiple times)
+        for (i in 1..25) {
+            processor.onFrame(inputFrame)
+            Thread.sleep(5) // Allow background thread to process
+        }
+
+        assertTrue(fakeCompositor.composeBlurCalls > 0)
+        processor.release()
+        assertTrue(fakeSegmenter.closed)
+        assertTrue(fakeCompositor.released)
     }
 }

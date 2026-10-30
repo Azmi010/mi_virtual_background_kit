@@ -81,6 +81,14 @@ class FrameProcessor(
     @Volatile
     private var pendingImageBitmap: Bitmap? = null
 
+    // Reusable buffers to eliminate per-frame allocations during segmentation (T3.5)
+    private var workerRgbaBuffer: ByteArray? = null
+    private var workerByteBuffer: ByteBuffer? = null
+    private var reusableBitmap: Bitmap? = null
+    private var maskBufferA: ByteArray? = null
+    private var maskBufferB: ByteArray? = null
+    private var useMaskBufferA = true
+
     /** Sets the blur effect with the given [radius] (in range (0, 100]). */
     fun setBlurEffect(radius: Float) {
         currentEffect = EffectState.Blur(radius)
@@ -175,23 +183,55 @@ class FrameProcessor(
                 if (rgbaBytes != null) {
                     val w = compositor.readbackWidth
                     val h = compositor.readbackHeight
-                    val bytesCopy = rgbaBytes.copyOf()
+                    val size = rgbaBytes.size
+                    if (workerRgbaBuffer == null || workerRgbaBuffer!!.size != size) {
+                        workerRgbaBuffer = ByteArray(size)
+                        workerByteBuffer = ByteBuffer.wrap(workerRgbaBuffer!!)
+                    }
+                    val dest = workerRgbaBuffer!!
+                    System.arraycopy(rgbaBytes, 0, dest, 0, size)
+
                     segmentExecutor.execute {
                         try {
-                            val bmp = bitmapProvider?.invoke(w, h)
-                                ?: Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                            val bmp = bitmapProvider?.invoke(w, h) ?: run {
+                                var b = reusableBitmap
+                                if (b == null || b.width != w || b.height != h) {
+                                    b?.recycle()
+                                    b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                                    reusableBitmap = b
+                                }
+                                b
+                            }
                             try {
-                                bmp.copyPixelsFromBuffer(ByteBuffer.wrap(bytesCopy))
+                                val bb = workerByteBuffer
+                                bb?.position(0)
+                                if (bb != null) {
+                                    bmp.copyPixelsFromBuffer(bb)
+                                }
                             } catch (_: Throwable) {
                                 // Safe fallback in tests without native pixel backing
                             }
                             val resultMask = seg.segment(bmp)
+                            val maskSize = resultMask.width * resultMask.height
+                            val targetBuf = if (useMaskBufferA) {
+                                if (maskBufferA == null || maskBufferA!!.size != maskSize) {
+                                    maskBufferA = ByteArray(maskSize)
+                                }
+                                useMaskBufferA = false
+                                maskBufferA!!
+                            } else {
+                                if (maskBufferB == null || maskBufferB!!.size != maskSize) {
+                                    maskBufferB = ByteArray(maskSize)
+                                }
+                                useMaskBufferA = true
+                                maskBufferB!!
+                            }
+                            System.arraycopy(resultMask.alpha, 0, targetBuf, 0, maskSize)
                             pendingMask = PersonMask(
-                                resultMask.alpha.copyOf(),
+                                targetBuf,
                                 resultMask.width,
                                 resultMask.height,
                             )
-                            bmp.recycle()
                         } catch (t: Throwable) {
                             Log.e(TAG, "Background segmentation failed: $t")
                         } finally {
@@ -234,6 +274,12 @@ class FrameProcessor(
             Log.w(TAG, "Error closing segmenter: $t")
         }
         segmenter = null
+        reusableBitmap?.recycle()
+        reusableBitmap = null
+        workerRgbaBuffer = null
+        workerByteBuffer = null
+        maskBufferA = null
+        maskBufferB = null
         try {
             compositor.release()
         } catch (t: Throwable) {
