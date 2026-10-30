@@ -6,6 +6,7 @@ import io.flutter.plugin.common.MethodChannel
 import org.mockito.Mockito
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /*
  * This demonstrates a simple unit test of the Kotlin portion of this plugin's implementation.
@@ -181,5 +182,61 @@ internal class MiVirtualBackgroundKitPluginTest {
         plugin.updateStatus("error")
         Mockito.verify(mockSink).success("error")
         assertEquals("error", plugin.currentStatus)
+    }
+
+    @Test
+    fun attachAndDetach_100Times_completesWithoutLeaksOrErrors() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+        val dummyTrack = Any()
+        var attachCount = 0
+        var detachCount = 0
+
+        plugin.trackAttacher = { _, _ ->
+            attachCount++
+            dummyTrack
+        }
+        plugin.trackDetacher = { _, _ ->
+            detachCount++
+        }
+
+        for (i in 1..100) {
+            val attachCall = MethodCall("attach", mapOf("trackId" to "track-$i"))
+            val attachResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+            plugin.onMethodCall(attachCall, attachResult)
+            Mockito.verify(attachResult).success(null)
+            assertEquals("active", plugin.currentStatus)
+
+            val detachCall = MethodCall("detach", null)
+            val detachResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+            plugin.onMethodCall(detachCall, detachResult)
+            Mockito.verify(detachResult).success(null)
+            assertEquals("idle", plugin.currentStatus)
+        }
+
+        assertEquals(100, attachCount)
+        assertEquals(100, detachCount)
+    }
+
+    @Test
+    fun dispose_cleansUpAttachedTrackAndProcessor() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+        val dummyTrack = Any()
+        var detached = false
+
+        plugin.trackAttacher = { _, _ -> dummyTrack }
+        plugin.trackDetacher = { _, _ -> detached = true }
+
+        val attachCall = MethodCall("attach", mapOf("trackId" to "track-1"))
+        val attachResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(attachCall, attachResult)
+        assertEquals("active", plugin.currentStatus)
+
+        val disposeCall = MethodCall("dispose", null)
+        val disposeResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(disposeCall, disposeResult)
+
+        Mockito.verify(disposeResult).success(null)
+        assertTrue(detached)
+        assertEquals("idle", plugin.currentStatus)
     }
 }

@@ -357,4 +357,44 @@ internal class FrameProcessorTest {
         assertTrue(fakeSegmenter.closed)
         assertTrue(fakeCompositor.released)
     }
+
+    @Test
+    fun releaseIsIdempotentAndSafeToCallMultipleTimes() {
+        val fakeSegmenter = FakeSegmenter()
+        val fakeCompositor = FakeCompositor()
+
+        val processor = FrameProcessor(
+            segmenterProvider = { fakeSegmenter },
+            compositorProvider = { fakeCompositor },
+        )
+        processor.setBlurEffect(10.0f)
+
+        // Multiple consecutive release calls must not throw
+        for (i in 1..10) {
+            processor.release()
+        }
+
+        assertTrue(fakeSegmenter.closed)
+        assertTrue(fakeCompositor.released)
+        assertNull(processor.currentEffect)
+    }
+
+    @Test
+    fun onFrameAfterReleaseBypassesWithoutProcessing() {
+        val fakeSegmenter = FakeSegmenter()
+        val fakeCompositor = FakeCompositor()
+        val mockBuffer = Mockito.mock(VideoFrame.TextureBuffer::class.java)
+        val frame = VideoFrame(mockBuffer, 0, 1000L)
+
+        val processor = FrameProcessor(
+            segmenterProvider = { fakeSegmenter },
+            compositorProvider = { fakeCompositor },
+        )
+        processor.setBlurEffect(10.0f)
+        processor.release()
+
+        val result = processor.onFrame(frame)
+        assertSame(frame, result)
+        assertEquals(0, fakeCompositor.composeBlurCalls)
+    }
 }

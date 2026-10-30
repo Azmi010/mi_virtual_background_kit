@@ -58,7 +58,7 @@ class MiVirtualBackgroundKitPlugin :
     // Production processor (T3.2). ADR 0001 §1: the LocalVideoTrack object
     // is cached here on attach — Dart's stream.getMediaTracks() replaces the
     // flutter_webrtc registry entry, so a re-lookup by id attaches to nothing.
-    private var attachedTrack: com.cloudwebrtc.webrtc.video.LocalVideoTrack? = null
+    private var attachedTrack: Any? = null
     private var frameProcessor: FrameProcessor? = null
 
     private var appContext: android.content.Context? = null
@@ -66,6 +66,14 @@ class MiVirtualBackgroundKitPlugin :
 
     internal var imageDecoder: (String, Any?) -> android.graphics.Bitmap? = { type, data ->
         decodeImage(type, data)
+    }
+
+    internal var trackAttacher: (String, FrameProcessor) -> Any? = { trackId, processor ->
+        attachFrameProcessor(trackId, processor)
+    }
+
+    internal var trackDetacher: (Any?, FrameProcessor?) -> Unit = { track, processor ->
+        detachFrameProcessor(track as? com.cloudwebrtc.webrtc.video.LocalVideoTrack, processor)
     }
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
@@ -112,7 +120,7 @@ class MiVirtualBackgroundKitPlugin :
                     context = appContext,
                     onStatusChange = { status -> updateStatus(status) },
                 )
-                val track = attachFrameProcessor(trackId, processor)
+                val track = trackAttacher(trackId, processor)
                 if (track == null) {
                     updateStatus("error")
                     result.error("invalidTrack", "no local video track: $trackId", null)
@@ -575,7 +583,9 @@ class MiVirtualBackgroundKitPlugin :
     /** Detaches the production processor from its cached track; idempotent. */
     private fun releaseFrameProcessor() {
         val p = frameProcessor
-        detachFrameProcessor(attachedTrack, p)
+        val track = attachedTrack
+        if (p == null && track == null) return
+        trackDetacher(track, p)
         p?.release()
         attachedTrack = null
         frameProcessor = null

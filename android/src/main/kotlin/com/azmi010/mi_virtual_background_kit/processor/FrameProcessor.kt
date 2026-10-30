@@ -127,7 +127,10 @@ class FrameProcessor(
         }
     }
 
+    private val isReleased = AtomicBoolean(false)
+
     override fun onFrame(frame: VideoFrame): VideoFrame {
+        if (isReleased.get()) return frame
         val n = frames.incrementAndGet()
         lastRotation = frame.rotation
         lastWidth = frame.rotatedWidth
@@ -266,10 +269,16 @@ class FrameProcessor(
         return frame
     }
 
-    /** Releases all resources associated with this processor. */
+    /** Releases all resources associated with this processor. Idempotent. */
     fun release() {
+        if (!isReleased.compareAndSet(false, true)) return
         clearEffect()
         segmentExecutor.shutdown()
+        try {
+            segmentExecutor.awaitTermination(200, java.util.concurrent.TimeUnit.MILLISECONDS)
+        } catch (_: Throwable) {
+            segmentExecutor.shutdownNow()
+        }
         try {
             segmenter?.close()
         } catch (t: Throwable) {

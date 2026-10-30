@@ -1280,6 +1280,19 @@ class GpuCompositor : FrameCompositor {
             GLES20.glDeleteProgram(imageProgram2D)
             imageProgram2D = 0
         }
+        vertexBuffer = null
+        texCoordBuffer = null
+        readbackBuffer = null
+        readbackArray = null
+        maskByteBuffer = null
+        maskWidth = 0
+        maskHeight = 0
+        imageWidth = 0
+        imageHeight = 0
+        outWidth = 0
+        outHeight = 0
+        readbackWidth = 0
+        readbackHeight = 0
         yuvConverter.release()
     }
 
