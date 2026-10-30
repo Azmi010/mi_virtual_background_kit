@@ -11,7 +11,10 @@ import flutter_webrtc
 /// YCbCr, R/B for BGRA), which produces a visible colour shift in the preview.
 public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   private var spikeProcessor: SpikeFrameProcessor?
+  private var frameProcessor: FrameProcessor?
+  private var attachedTrack: LocalVideoTrack?
   private var eventSink: FlutterEventSink?
+  private var currentStatus: String = "idle"
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "mi_virtual_background_kit", binaryMessenger: registrar.messenger())
@@ -23,13 +26,54 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
 
   public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
     self.eventSink = events
-    events("idle")
+    events(currentStatus)
     return nil
   }
 
   public func onCancel(withArguments arguments: Any?) -> FlutterError? {
     self.eventSink = nil
     return nil
+  }
+
+  private func updateStatus(_ status: String) {
+    self.currentStatus = status
+    DispatchQueue.main.async { [weak self] in
+      self?.eventSink?(status)
+    }
+  }
+
+  /// Attaches [processor] to [LocalVideoTrack] via flutter_webrtc plugin singleton.
+  /// Caches the track reference directly per ADR 0001 §1.
+  private func attachFrameProcessor(trackId: String, processor: ExternalVideoProcessingDelegate) -> LocalVideoTrack? {
+    guard let plugin = FlutterWebRTCPlugin.sharedSingleton(),
+          let track = plugin.localTracks?[trackId] as? LocalVideoTrack else {
+      NSLog("MiVBG attach failed: track \(trackId) not found in localTracks")
+      return nil
+    }
+    track.addProcessing(processor)
+    return track
+  }
+
+  /// Detaches [processor] from [track]; idempotent per FR-06.
+  private func detachFrameProcessor(track: LocalVideoTrack?, processor: ExternalVideoProcessingDelegate?) {
+    guard let track = track else { return }
+    if let processor = processor {
+      track.removeProcessing(processor)
+    }
+  }
+
+  /// Releases the production FrameProcessor and detaches from the cached track; idempotent.
+  private func releaseFrameProcessor() {
+    if let track = attachedTrack, let processor = frameProcessor {
+      detachFrameProcessor(track: track, processor: processor)
+      processor.release()
+    }
+    if let track = attachedTrack, let spike = spikeProcessor {
+      detachFrameProcessor(track: track, processor: spike)
+    }
+    attachedTrack = nil
+    frameProcessor = nil
+    spikeProcessor = nil
   }
 
   private func runSegmenterSelfTest() {
@@ -72,6 +116,48 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
       } else {
         result(false)
       }
+    case "attach":
+      guard let args = call.arguments as? [String: Any],
+            let trackId = args["trackId"] as? String,
+            !trackId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        updateStatus("error")
+        result(FlutterError(code: "invalidTrack", message: "trackId is required", details: nil))
+        return
+      }
+
+      updateStatus("initializing")
+      // Re-attach replaces: never stack processors on one track (ADR 0001 §1).
+      releaseFrameProcessor()
+
+      let processor = FrameProcessor { [weak self] status in
+        self?.updateStatus(status)
+      }
+
+      guard let track = attachFrameProcessor(trackId: trackId, processor: processor) else {
+        updateStatus("error")
+        result(FlutterError(code: "invalidTrack", message: "no local video track: \(trackId)", details: nil))
+        return
+      }
+
+      self.attachedTrack = track
+      self.frameProcessor = processor
+      updateStatus("active")
+      print("[MiVBG] Successfully attached production FrameProcessor to track: \(trackId)")
+      result(nil)
+
+    case "detach":
+      let wasAttached = (frameProcessor != nil)
+      releaseFrameProcessor()
+      updateStatus("idle")
+      print("[MiVBG] Detached processor (wasAttached=\(wasAttached))")
+      result(nil)
+
+    case "dispose":
+      releaseFrameProcessor()
+      updateStatus("idle")
+      print("[MiVBG] Disposed plugin resources")
+      result(nil)
+
     case "spikeAttach":
       runSegmenterSelfTest()
       guard let args = call.arguments as? [String: Any],
@@ -79,35 +165,35 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
         result(FlutterError(code: "bad_args", message: "trackId is required", details: nil))
         return
       }
-      let processor = SpikeFrameProcessor()
-      let attached = SpikeHook.attach(trackId: trackId, processor: processor)
-      if attached {
-        spikeProcessor = processor
+      releaseFrameProcessor()
+      let processor = FrameProcessor { [weak self] status in
+        self?.updateStatus(status)
       }
-      result(attached)
+      guard let track = attachFrameProcessor(trackId: trackId, processor: processor) else {
+        result(false)
+        return
+      }
+      self.attachedTrack = track
+      self.frameProcessor = processor
+      updateStatus("active")
+      print("[MiVBG] spikeAttach: attached FrameProcessor to \(trackId)")
+      result(true)
     case "spikeFrameCount":
-      result(spikeProcessor?.frameCount ?? 0)
-    case "spikeReport":
-      let p = spikeProcessor
-      NSLog(
-        "MiVBGSpike report frames=\(p?.frameCount ?? 0) "
-          + "buffer=\(p?.bufferType ?? "") rot=\(p?.rotation ?? 0) "
-          + "size=\(p?.width ?? 0)x\(p?.height ?? 0)")
+      result(frameProcessor?.frameCount ?? spikeProcessor?.frameCount ?? 0)
+    case "spikeReport", "spikeInfo":
+      let p = frameProcessor
+      let sp = spikeProcessor
+      let count = p?.frameCount ?? sp?.frameCount ?? 0
+      let buf = p?.bufferType ?? sp?.bufferType ?? ""
+      let rot = p?.lastRotation ?? sp?.rotation ?? 0
+      let w = p?.lastWidth ?? sp?.width ?? 0
+      let h = p?.lastHeight ?? sp?.height ?? 0
       result([
-        "frames": p?.frameCount ?? 0,
-        "bufferType": p?.bufferType ?? "",
-        "rotation": p?.rotation ?? 0,
-        "width": p?.width ?? 0,
-        "height": p?.height ?? 0,
-      ])
-    case "spikeInfo":
-      let p = spikeProcessor
-      result([
-        "frames": p?.frameCount ?? 0,
-        "bufferType": p?.bufferType ?? "",
-        "rotation": p?.rotation ?? 0,
-        "width": p?.width ?? 0,
-        "height": p?.height ?? 0,
+        "frames": count,
+        "bufferType": buf,
+        "rotation": rot,
+        "width": w,
+        "height": h,
       ])
     case "spikeGpuInfo":
       result([:])
@@ -118,40 +204,12 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
       spikeProcessor?.enabled = (args?["enabled"] as? Bool) ?? true
       result(true)
     case "spikeBenchmarkReadback":
-      do {
-        let segmenter = try Segmenter()
-        defer { segmenter.close() }
-        let size = CGSize(width: 256, height: 256)
-        UIGraphicsBeginImageContextWithOptions(size, true, 1.0)
-        UIColor.white.setFill()
-        UIRectFill(CGRect(origin: .zero, size: size))
-        UIColor.darkGray.setFill()
-        UIBezierPath(ovalIn: CGRect(x: 64, y: 32, width: 128, height: 160)).fill()
-        let testImage = UIGraphicsGetImageFromCurrentImageContext() ?? UIImage()
-        UIGraphicsEndImageContext()
-
-        let start = CFAbsoluteTimeGetCurrent()
-        let mask = try segmenter.segment(image: testImage)
-        let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
-        let logMsg = "MiVBGSegmenter SUCCESS: mask \(mask.width)x\(mask.height) person=\(mask.personPixelCount) time=\(elapsedMs)ms"
-        print("[MiVBGSegmenter] \(logMsg)")
-        NSLog(logMsg)
-        result(true)
-      } catch {
-        let err = "MiVBGSegmenter ERROR: \(error)"
-        print("[MiVBGSegmenter] \(err)")
-        NSLog(err)
-        result(false)
-      }
+      runSegmenterSelfTest()
+      result(true)
     case "spikeDetach":
-      guard let args = call.arguments as? [String: Any],
-            let trackId = args["trackId"] as? String else {
-        result(false)
-        return
-      }
-      let ok = SpikeHook.detach(trackId: trackId, processor: spikeProcessor)
-      spikeProcessor = nil
-      result(ok)
+      releaseFrameProcessor()
+      updateStatus("idle")
+      result(true)
     default:
       result(FlutterMethodNotImplemented)
     }

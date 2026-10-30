@@ -19,6 +19,76 @@ class RunnerTests: XCTestCase {
     waitForExpectations(timeout: 1)
   }
 
+  // MARK: - FrameProcessor Tests
+
+  func testFrameProcessorInitialStateAndRelease() {
+    let processor = FrameProcessor()
+    XCTAssertEqual(processor.frameCount, 0)
+    XCTAssertEqual(processor.lastWidth, 0)
+    XCTAssertEqual(processor.lastHeight, 0)
+    XCTAssertEqual(processor.lastRotation, 0)
+    XCTAssertEqual(processor.bufferType, "")
+
+    processor.release()
+    XCTAssertEqual(processor.frameCount, 0)
+  }
+
+  func testAttachWithoutTrackIdErrorsInvalidTrack() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    let call = FlutterMethodCall(methodName: "attach", arguments: nil)
+
+    let exp = expectation(description: "must return error")
+    plugin.handle(call) { result in
+      guard let error = result as? FlutterError else {
+        XCTFail("Expected FlutterError, got \(String(describing: result))")
+        return
+      }
+      XCTAssertEqual(error.code, "invalidTrack")
+      exp.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+  }
+
+  func testAttachWithNonExistentTrackErrorsInvalidTrack() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    let call = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "unknown_track_123"])
+
+    let exp = expectation(description: "must return error")
+    plugin.handle(call) { result in
+      guard let error = result as? FlutterError else {
+        XCTFail("Expected FlutterError, got \(String(describing: result))")
+        return
+      }
+      XCTAssertEqual(error.code, "invalidTrack")
+      exp.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+  }
+
+  func testDetachWithoutAttachIsIdempotentSuccess() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    let call = FlutterMethodCall(methodName: "detach", arguments: nil)
+
+    let exp = expectation(description: "must succeed")
+    plugin.handle(call) { result in
+      XCTAssertNil(result)
+      exp.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+  }
+
+  func testDisposeIsIdempotentSuccess() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    let call = FlutterMethodCall(methodName: "dispose", arguments: nil)
+
+    let exp = expectation(description: "must succeed")
+    plugin.handle(call) { result in
+      XCTAssertNil(result)
+      exp.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+  }
+
   // MARK: - MaskCodec Tests
 
   func testUInt8CategoryMaskConversion() throws {
