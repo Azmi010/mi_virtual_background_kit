@@ -112,6 +112,9 @@ class FrameProcessor(
     /** Clears any active effect, returning to pass-through (NoEffect). */
     fun clearEffect() {
         currentEffect = null
+        pendingMask = null
+        pendingImageBitmap = null
+        compositor.clearMask()
     }
 
     private fun ensureSegmenter() {
@@ -173,8 +176,8 @@ class FrameProcessor(
             }
         }
 
-        // 3. Schedule segmentation every SEGMENT_EVERY_N_FRAMES if worker is idle
-        if (n % SEGMENT_EVERY_N_FRAMES == 0 && isSegmenting.compareAndSet(false, true)) {
+        // 3. Schedule segmentation every SEGMENT_EVERY_N_FRAMES (or immediately on first frame) if worker is idle
+        if ((!compositor.hasMask || n % SEGMENT_EVERY_N_FRAMES == 0) && isSegmenting.compareAndSet(false, true)) {
             val seg = segmenter
             if (seg != null) {
                 val rgbaBytes = try {

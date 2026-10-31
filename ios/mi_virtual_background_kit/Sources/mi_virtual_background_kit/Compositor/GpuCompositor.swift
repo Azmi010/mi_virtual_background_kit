@@ -10,6 +10,7 @@ public protocol FrameCompositor: AnyObject {
     var hasMask: Bool { get }
     func uploadMask(_ mask: PersonMask)
     func uploadMask(_ mask: PersonMask, rotation: Int32)
+    func clearMask()
     func uploadImage(_ image: UIImage)
     func composeBlur(frame: RTCVideoFrame, radius: Float) -> RTCVideoFrame?
     func composeColor(frame: RTCVideoFrame, color: UInt32) -> RTCVideoFrame?
@@ -77,6 +78,15 @@ public class GpuCompositor: FrameCompositor {
 
     public func uploadMask(_ mask: PersonMask) {
         uploadMask(mask, rotation: Int32(mask.rotation.rawValue))
+    }
+
+    public func clearMask() {
+        lock.lock()
+        defer { lock.unlock() }
+        self.currentMaskImage = nil
+        self.maskWidth = 0
+        self.maskHeight = 0
+        self.maskRotation = 0
     }
 
     public func uploadImage(_ image: UIImage) {

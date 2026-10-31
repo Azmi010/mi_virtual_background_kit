@@ -91,7 +91,8 @@ Repo dibuat di awal fase ini supaya spike dan ADR punya tempat. Kode spike diker
 
 ## Fase 5 — Fitur dan perilaku runtime (M4)
 
-- [ ] T5.1 Ganti efek saat runtime tanpa kedipan atau restart kamera (FR-05). Selesai: transisi antar efek mulus di kedua platform.
+- [x] T5.1 Ganti efek saat runtime tanpa kedipan atau restart kamera (FR-05). Selesai: transisi antar efek mulus di kedua platform.
+  - Hasil: Transisi runtime antar efek (Blur, Solid Color, Image fit cover/contain, dan NoEffect/bypass) berjalan mulus tanpa menghentikan atau membuat ulang track kamera (FR-05). Di Android dan iOS: `FrameCompositor` dilengkapi method `clearMask()` thread-safe yang secara idempoten mereset status mask saat `clearEffect()` dipanggil, mencegah ghosting/flicker siluet lama saat beralih dari `NoEffect` kembali ke efek aktif. Transisi antar efek aktif (Blur <-> Color <-> Image) mempertahankan mask yang ada sehingga pergantian instan tanpa jeda ke frame mentah. Di Android, penjadwalan segmentasi dipicu langsung pada frame pertama (`!compositor.hasMask || n % 5 == 0`) menghilangkan latensi awal. Ditambahkan unit test transisi efek runtime di kedua platform (`FrameProcessorTest.kt` & `RunnerTests.swift`), seluruh 53 unit test Dart 100% lulus, 37 test JVM lulus, `flutter analyze` 0 issue, serta build iOS dan Android example berhasil 100%.
 - [ ] T5.2 Parameter kualitas: resolusi segmentasi, edge smoothing, target fps (FR-11). Selesai: perubahan parameter berpengaruh terukur pada fps dan kualitas.
   - Catatan dari T3.3: `BackgroundQuality` (segmentationWidth, edgeSmoothing, targetFps) belum diwiring ke Android. Segmentation width memengaruhi ukuran `PersonMask`; saat T3.3 mask diambil pada resolusi readback. edgeSmoothing belum ada di shader (mask mentah).
 - [ ] T5.3 Fallback performa (FR-12): deteksi fps turun dan turunkan kualitas atau nonaktifkan dengan event. Selesai: skenario perangkat lambat tertangani tanpa crash.

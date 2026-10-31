@@ -24,6 +24,7 @@ interface FrameCompositor {
     val readbackHeight: Int
     fun readBackRgba(buffer: VideoFrame.TextureBuffer): ByteArray?
     fun uploadMask(mask: PersonMask)
+    fun clearMask()
     fun uploadImage(bitmap: Bitmap)
     fun composeBlur(frame: VideoFrame, radius: Float): VideoFrame?
     fun composeColor(frame: VideoFrame, color: Int): VideoFrame?
@@ -148,8 +149,15 @@ class GpuCompositor : FrameCompositor {
     override var readbackHeight: Int = 0
         private set
 
-    override val hasMask: Boolean get() = maskTextureId != 0
+    @Volatile
+    private var maskValid = false
+
+    override val hasMask: Boolean get() = maskValid && maskTextureId != 0
     val hasImage: Boolean get() = imageTextureId != 0
+
+    override fun clearMask() {
+        maskValid = false
+    }
 
     private val vertices = floatArrayOf(
         -1f, -1f,
@@ -282,6 +290,7 @@ class GpuCompositor : FrameCompositor {
             }
         }
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
+        maskValid = true
     }
 
     /**
@@ -1232,6 +1241,7 @@ class GpuCompositor : FrameCompositor {
     }
 
     override fun release() {
+        maskValid = false
         if (fbo != 0) {
             GLES20.glDeleteFramebuffers(1, intArrayOf(fbo), 0)
             fbo = 0

@@ -113,6 +113,7 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         lock.lock()
         currentEffect = nil
         lock.unlock()
+        compositor.clearMask()
     }
 
     private func ensureSegmenter() throws {

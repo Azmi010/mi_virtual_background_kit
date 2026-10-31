@@ -50,6 +50,9 @@ internal class FrameProcessorTest {
         override fun uploadMask(mask: PersonMask) {
             hasMask = true
         }
+        override fun clearMask() {
+            hasMask = false
+        }
         override fun uploadImage(bitmap: Bitmap) {
             lastUploadedBitmap = bitmap
         }
@@ -396,5 +399,74 @@ internal class FrameProcessorTest {
         val result = processor.onFrame(frame)
         assertSame(frame, result)
         assertEquals(0, fakeCompositor.composeBlurCalls)
+    }
+
+    @Test
+    fun clearEffect_clearsMaskAndEffectState() {
+        val fakeSegmenter = FakeSegmenter()
+        val fakeCompositor = FakeCompositor()
+
+        val processor = FrameProcessor(
+            segmenterProvider = { fakeSegmenter },
+            compositorProvider = { fakeCompositor },
+        )
+        processor.setBlurEffect(12.0f)
+        fakeCompositor.uploadMask(PersonMask(ByteArray(4), 2, 2))
+        assertTrue(fakeCompositor.hasMask)
+
+        processor.clearEffect()
+        assertNull(processor.currentEffect)
+        assertTrue(!fakeCompositor.hasMask)
+    }
+
+    @Test
+    fun runtimeEffectSwitching_seamlessTransitionsBetweenEffects() {
+        val fakeSegmenter = FakeSegmenter()
+        val fakeCompositor = FakeCompositor()
+        val mockBuffer = Mockito.mock(VideoFrame.TextureBuffer::class.java)
+        Mockito.`when`(mockBuffer.unscaledWidth).thenReturn(640)
+        Mockito.`when`(mockBuffer.unscaledHeight).thenReturn(480)
+        Mockito.`when`(mockBuffer.type).thenReturn(VideoFrame.TextureBuffer.Type.RGB)
+        val frame = VideoFrame(mockBuffer, 0, 1000L)
+
+        val processor = FrameProcessor(
+            segmenterProvider = { fakeSegmenter },
+            compositorProvider = { fakeCompositor },
+        )
+
+        // 1. Start with Blur effect
+        processor.setBlurEffect(15.0f)
+        fakeCompositor.uploadMask(PersonMask(ByteArray(4), 2, 2))
+        processor.onFrame(frame)
+        assertEquals(1, fakeCompositor.composeBlurCalls)
+
+        // 2. Switch to Solid Color effect at runtime
+        processor.setColorEffect(0xFF00FF00.toInt())
+        assertTrue(processor.currentEffect is FrameProcessor.EffectState.Color)
+        processor.onFrame(frame)
+        assertEquals(1, fakeCompositor.composeColorCalls)
+
+        // 3. Switch to Image effect at runtime
+        val bmp = createTestBitmap()
+        processor.setImageEffect(bmp, "cover")
+        assertTrue(processor.currentEffect is FrameProcessor.EffectState.Image)
+        processor.onFrame(frame)
+        assertEquals(1, fakeCompositor.composeImageCalls)
+        assertSame(bmp, fakeCompositor.lastUploadedBitmap)
+
+        // 4. Switch blur radius at runtime
+        processor.setBlurEffect(35.0f)
+        processor.onFrame(frame)
+        assertEquals(2, fakeCompositor.composeBlurCalls)
+        assertEquals(35.0f, fakeCompositor.lastRadius)
+
+        // 5. Clear effect to bypass
+        processor.clearEffect()
+        assertNull(processor.currentEffect)
+        assertTrue(!fakeCompositor.hasMask)
+        val bypassResult = processor.onFrame(frame)
+        assertSame(frame, bypassResult)
+
+        processor.release()
     }
 }

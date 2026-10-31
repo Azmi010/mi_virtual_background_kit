@@ -335,6 +335,57 @@ class RunnerTests: XCTestCase {
     XCTAssertNil(processor.currentEffect)
   }
 
+  func testFrameProcessorRuntimeEffectSwitching() throws {
+    let processor = FrameProcessor(segmenterProvider: { MockSegmenter() })
+
+    // 1. Initial: no effect
+    XCTAssertNil(processor.currentEffect)
+
+    // 2. Switch to Blur
+    try processor.setBlurEffect(radius: 15.0)
+    if case .blur(let r) = processor.currentEffect {
+      XCTAssertEqual(r, 15.0)
+    } else {
+      XCTFail("Expected blur effect")
+    }
+
+    // 3. Switch to Color
+    try processor.setColorEffect(color: 0xFF00FF00)
+    if case .color(let c) = processor.currentEffect {
+      XCTAssertEqual(c, 0xFF00FF00)
+    } else {
+      XCTFail("Expected color effect")
+    }
+
+    // 4. Switch to Image
+    let size = CGSize(width: 4, height: 4)
+    UIGraphicsBeginImageContext(size)
+    let testImg = UIGraphicsGetImageFromCurrentImageContext() ?? UIImage()
+    UIGraphicsEndImageContext()
+    try processor.setImageEffect(image: testImg, fit: "contain")
+    if case .image(_, let fit) = processor.currentEffect {
+      XCTAssertEqual(fit, "contain")
+    } else {
+      XCTFail("Expected image effect")
+    }
+
+    // 5. Clear effect
+    processor.clearEffect()
+    XCTAssertNil(processor.currentEffect)
+
+    processor.release()
+  }
+
+  func testGpuCompositorClearMask() {
+    let compositor = GpuCompositor()
+    let mask = PersonMask(alpha: [255, 0, 0, 255], width: 2, height: 2)
+    compositor.uploadMask(mask)
+    XCTAssertTrue(compositor.hasMask)
+
+    compositor.clearMask()
+    XCTAssertFalse(compositor.hasMask)
+  }
+
   func testGpuCompositorReleaseIsIdempotent() {
     let compositor = GpuCompositor()
     let mask = PersonMask(alpha: [255, 0, 0, 255], width: 2, height: 2)
