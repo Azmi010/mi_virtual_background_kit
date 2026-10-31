@@ -37,7 +37,7 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
 
     private let compositor: FrameCompositor
     private var segmenter: MaskSegmenter?
-    private var segmenterProvider: (() -> MaskSegmenter)?
+    private var segmenterProvider: (() throws -> MaskSegmenter)?
     private let segmentQueue = DispatchQueue(
         label: "com.azmi010.mi_virtual_background_kit.segmentation",
         qos: .userInteractive
@@ -78,7 +78,7 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
 
     public init(
         compositor: FrameCompositor? = nil,
-        segmenterProvider: (() -> MaskSegmenter)? = nil,
+        segmenterProvider: (() throws -> MaskSegmenter)? = nil,
         onStatusChange: ((String) -> Void)? = nil
     ) {
         self.compositor = compositor ?? GpuCompositor()
@@ -87,26 +87,26 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         super.init()
     }
 
-    public func setBlurEffect(radius: Float) {
+    public func setBlurEffect(radius: Float) throws {
         lock.lock()
         currentEffect = .blur(radius: radius)
         lock.unlock()
-        ensureSegmenter()
+        try ensureSegmenter()
     }
 
-    public func setColorEffect(color: UInt32) {
+    public func setColorEffect(color: UInt32) throws {
         lock.lock()
         currentEffect = .color(color: color)
         lock.unlock()
-        ensureSegmenter()
+        try ensureSegmenter()
     }
 
-    public func setImageEffect(image: UIImage, fit: String) {
+    public func setImageEffect(image: UIImage, fit: String) throws {
         lock.lock()
         currentEffect = .image(image: image, fit: fit)
         lock.unlock()
         compositor.uploadImage(image)
-        ensureSegmenter()
+        try ensureSegmenter()
     }
 
     public func clearEffect() {
@@ -115,19 +115,20 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         lock.unlock()
     }
 
-    private func ensureSegmenter() {
+    private func ensureSegmenter() throws {
         lock.lock()
         defer { lock.unlock() }
         if segmenter == nil {
             do {
                 if let provider = segmenterProvider {
-                    segmenter = provider()
+                    segmenter = try provider()
                 } else {
                     segmenter = try Segmenter()
                 }
             } catch {
                 NSLog("MiVBG failed to initialize Segmenter: \(error)")
                 onStatusChange?("error")
+                throw error
             }
         }
     }

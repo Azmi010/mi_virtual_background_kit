@@ -12,10 +12,16 @@ import flutter_webrtc
 public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   private var spikeProcessor: SpikeFrameProcessor?
   private var frameProcessor: FrameProcessor?
-  private var attachedTrack: LocalVideoTrack?
+  private var attachedTrack: Any?
   private var eventSink: FlutterEventSink?
-  private var currentStatus: String = "idle"
+  internal var currentStatus: String = "idle"
   private weak var registrar: FlutterPluginRegistrar?
+
+  internal var trackAttacher: ((String, ExternalVideoProcessingDelegate) -> Any?)?
+  internal var trackDetacher: ((Any?, ExternalVideoProcessingDelegate?) -> Void)?
+  internal var imageDecoder: ((String, Any?) -> UIImage?)?
+  internal var frameProcessorFactory: (((String) -> Void) -> FrameProcessor)?
+  internal var isSupportedChecker: (() -> Bool)?
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "mi_virtual_background_kit", binaryMessenger: registrar.messenger())
@@ -37,16 +43,23 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
     return nil
   }
 
-  private func updateStatus(_ status: String) {
+  internal func updateStatus(_ status: String) {
     self.currentStatus = status
-    DispatchQueue.main.async { [weak self] in
-      self?.eventSink?(status)
+    if Thread.isMainThread {
+      self.eventSink?(status)
+    } else {
+      DispatchQueue.main.async { [weak self] in
+        self?.eventSink?(status)
+      }
     }
   }
 
   /// Attaches [processor] to [LocalVideoTrack] via flutter_webrtc plugin singleton.
   /// Caches the track reference directly per ADR 0001 §1.
-  private func attachFrameProcessor(trackId: String, processor: ExternalVideoProcessingDelegate) -> LocalVideoTrack? {
+  private func attachFrameProcessor(trackId: String, processor: ExternalVideoProcessingDelegate) -> Any? {
+    if let customAttacher = trackAttacher {
+      return customAttacher(trackId, processor)
+    }
     guard let plugin = FlutterWebRTCPlugin.sharedSingleton(),
           let track = plugin.localTracks?[trackId] as? LocalVideoTrack else {
       NSLog("MiVBG attach failed: track \(trackId) not found in localTracks")
@@ -57,8 +70,12 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
   }
 
   /// Detaches [processor] from [track]; idempotent per FR-06.
-  private func detachFrameProcessor(track: LocalVideoTrack?, processor: ExternalVideoProcessingDelegate?) {
-    guard let track = track else { return }
+  private func detachFrameProcessor(track: Any?, processor: ExternalVideoProcessingDelegate?) {
+    if let customDetacher = trackDetacher {
+      customDetacher(track, processor)
+      return
+    }
+    guard let track = track as? LocalVideoTrack else { return }
     if let processor = processor {
       track.removeProcessing(processor)
     }
@@ -66,19 +83,24 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
 
   /// Releases the production FrameProcessor and detaches from the cached track; idempotent.
   private func releaseFrameProcessor() {
-    if let track = attachedTrack, let processor = frameProcessor {
-      detachFrameProcessor(track: track, processor: processor)
-      processor.release()
+    if let track = attachedTrack {
+      if let processor = frameProcessor {
+        detachFrameProcessor(track: track, processor: processor)
+      }
+      if let spike = spikeProcessor {
+        detachFrameProcessor(track: track, processor: spike)
+      }
     }
-    if let track = attachedTrack, let spike = spikeProcessor {
-      detachFrameProcessor(track: track, processor: spike)
-    }
+    frameProcessor?.release()
     attachedTrack = nil
     frameProcessor = nil
     spikeProcessor = nil
   }
 
   private func decodeImage(sourceType: String, data: Any?) -> UIImage? {
+    if let customDecoder = imageDecoder {
+      return customDecoder(sourceType, data)
+    }
     guard let data = data else { return nil }
     switch sourceType {
     case "asset":
@@ -145,9 +167,14 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
     case "getPlatformVersion":
       result("iOS " + UIDevice.current.systemVersion)
     case "isSupported":
+      if let checker = isSupportedChecker {
+        result(checker())
+        return
+      }
       runSegmenterSelfTest()
       if #available(iOS 15.0, *) {
-        result(true)
+        let modelOk = (Segmenter.resolveModelPath() != nil)
+        result(modelOk)
       } else {
         result(false)
       }
@@ -164,7 +191,9 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
       // Re-attach replaces: never stack processors on one track (ADR 0001 §1).
       releaseFrameProcessor()
 
-      let processor = FrameProcessor { [weak self] status in
+      let processor = frameProcessorFactory?({ [weak self] status in
+        self?.updateStatus(status)
+      }) ?? FrameProcessor { [weak self] status in
         self?.updateStatus(status)
       }
 
@@ -190,15 +219,25 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
       switch type {
       case "blur":
         let radius = (args["radius"] as? NSNumber)?.floatValue ?? 12.0
-        frameProcessor?.setBlurEffect(radius: radius)
-        updateStatus("active")
-        result(nil)
+        do {
+          try frameProcessor?.setBlurEffect(radius: radius)
+          updateStatus("active")
+          result(nil)
+        } catch {
+          updateStatus("error")
+          result(FlutterError(code: "modelLoadFailed", message: error.localizedDescription, details: nil))
+        }
 
       case "color":
         let colorNum = (args["color"] as? NSNumber)?.uint32Value ?? 0xFF000000
-        frameProcessor?.setColorEffect(color: colorNum)
-        updateStatus("active")
-        result(nil)
+        do {
+          try frameProcessor?.setColorEffect(color: colorNum)
+          updateStatus("active")
+          result(nil)
+        } catch {
+          updateStatus("error")
+          result(FlutterError(code: "modelLoadFailed", message: error.localizedDescription, details: nil))
+        }
 
       case "image":
         let fit = (args["fit"] as? String) ?? "cover"
@@ -211,9 +250,14 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
           return
         }
 
-        frameProcessor?.setImageEffect(image: image, fit: fit)
-        updateStatus("active")
-        result(nil)
+        do {
+          try frameProcessor?.setImageEffect(image: image, fit: fit)
+          updateStatus("active")
+          result(nil)
+        } catch {
+          updateStatus("error")
+          result(FlutterError(code: "modelLoadFailed", message: error.localizedDescription, details: nil))
+        }
 
       case "none":
         frameProcessor?.clearEffect()

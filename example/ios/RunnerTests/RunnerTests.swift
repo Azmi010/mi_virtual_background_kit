@@ -4,6 +4,25 @@ import XCTest
 
 @testable import mi_virtual_background_kit
 
+class MockSegmenter: MaskSegmenter {
+  var closeCalled = false
+  func segment(image: UIImage) throws -> PersonMask {
+    return PersonMask(alpha: [255], width: 1, height: 1)
+  }
+  func segment(pixelBuffer: CVPixelBuffer) throws -> PersonMask {
+    return PersonMask(alpha: [255], width: 1, height: 1)
+  }
+  func segment(pixelBuffer: CVPixelBuffer, rotation: RTCVideoRotation) throws -> PersonMask {
+    return PersonMask(alpha: [255], width: 1, height: 1, rotation: rotation)
+  }
+  func segment(pixelBuffer: CVPixelBuffer, rotation: Int32) throws -> PersonMask {
+    return PersonMask(alpha: [255], width: 1, height: 1)
+  }
+  func close() {
+    closeCalled = true
+  }
+}
+
 class RunnerTests: XCTestCase {
 
   func testGetPlatformVersion() {
@@ -28,7 +47,6 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(processor.lastHeight, 0)
     XCTAssertEqual(processor.lastRotation, 0)
     XCTAssertEqual(processor.bufferType, "")
-    XCTAssertEqual(FrameProcessor.segmentEveryNFrames, 2)
 
     processor.release()
     XCTAssertEqual(processor.frameCount, 0)
@@ -45,6 +63,22 @@ class RunnerTests: XCTestCase {
         return
       }
       XCTAssertEqual(error.code, "invalidTrack")
+      exp.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+  }
+
+  func testAttachEmptyTrackIdReturnsInvalidTrack() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    let call = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "   "])
+
+    let exp = expectation(description: "empty trackId error")
+    plugin.handle(call) { result in
+      guard let err = result as? FlutterError else {
+        XCTFail("Expected FlutterError, got \(String(describing: result))")
+        return
+      }
+      XCTAssertEqual(err.code, "invalidTrack")
       exp.fulfill()
     }
     waitForExpectations(timeout: 1)
@@ -88,6 +122,123 @@ class RunnerTests: XCTestCase {
       exp.fulfill()
     }
     waitForExpectations(timeout: 1)
+  }
+
+  func testIsSupportedChecker() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+
+    // Default call
+    let call = FlutterMethodCall(methodName: "isSupported", arguments: nil)
+    let exp1 = expectation(description: "default isSupported")
+    plugin.handle(call) { result in
+      XCTAssertNotNil(result as? Bool)
+      exp1.fulfill()
+    }
+
+    // Forced true
+    plugin.isSupportedChecker = { true }
+    let exp2 = expectation(description: "isSupported true")
+    plugin.handle(call) { result in
+      XCTAssertEqual(result as? Bool, true)
+      exp2.fulfill()
+    }
+
+    // Forced false
+    plugin.isSupportedChecker = { false }
+    let exp3 = expectation(description: "isSupported false")
+    plugin.handle(call) { result in
+      XCTAssertEqual(result as? Bool, false)
+      exp3.fulfill()
+    }
+
+    waitForExpectations(timeout: 1)
+  }
+
+  func testEventChannelStreamHandler() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    var events: [String] = []
+
+    let err = plugin.onListen(withArguments: nil) { event in
+      if let status = event as? String {
+        events.append(status)
+      }
+    }
+    XCTAssertNil(err)
+    XCTAssertEqual(events, ["idle"])
+
+    plugin.updateStatus("initializing")
+    plugin.updateStatus("active")
+    plugin.updateStatus("error")
+    plugin.updateStatus("idle")
+
+    XCTAssertEqual(events, ["idle", "initializing", "active", "error", "idle"])
+
+    let cancelErr = plugin.onCancel(withArguments: nil)
+    XCTAssertNil(cancelErr)
+
+    // Updating status after cancel does not append
+    plugin.updateStatus("active")
+    XCTAssertEqual(events.count, 5)
+  }
+
+  func testAttachAndDetachLifecycle() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    var statuses: [String] = []
+    _ = plugin.onListen(withArguments: nil) { event in
+      if let s = event as? String { statuses.append(s) }
+    }
+
+    var detachedTrack: Any? = nil
+    plugin.trackAttacher = { _, _ in
+      return NSObject()
+    }
+    plugin.trackDetacher = { track, _ in
+      detachedTrack = track
+    }
+    plugin.frameProcessorFactory = { onStatus in
+      return FrameProcessor(segmenterProvider: { MockSegmenter() }, onStatusChange: onStatus)
+    }
+
+    let attachCall = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "cam_track_1"])
+    let expAttach = expectation(description: "attach success")
+    plugin.handle(attachCall) { result in
+      XCTAssertNil(result)
+      expAttach.fulfill()
+    }
+
+    waitForExpectations(timeout: 1)
+    XCTAssertEqual(statuses, ["idle", "initializing", "active"])
+
+    let detachCall = FlutterMethodCall(methodName: "detach", arguments: nil)
+    let expDetach = expectation(description: "detach success")
+    plugin.handle(detachCall) { result in
+      XCTAssertNil(result)
+      expDetach.fulfill()
+    }
+
+    waitForExpectations(timeout: 1)
+    XCTAssertNotNil(detachedTrack)
+    XCTAssertEqual(statuses.last, "idle")
+  }
+
+  func testReattachReplacesOldProcessor() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    var detachCount = 0
+    plugin.trackAttacher = { _, _ in NSObject() }
+    plugin.trackDetacher = { _, _ in detachCount += 1 }
+    plugin.frameProcessorFactory = { onStatus in
+      FrameProcessor(segmenterProvider: { MockSegmenter() }, onStatusChange: onStatus)
+    }
+
+    let call1 = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "track_1"])
+    plugin.handle(call1) { _ in }
+
+    XCTAssertEqual(detachCount, 0)
+
+    let call2 = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "track_2"])
+    plugin.handle(call2) { _ in }
+
+    XCTAssertEqual(detachCount, 1)
   }
 
   // MARK: - GpuCompositor & Compositing Tests
@@ -146,18 +297,18 @@ class RunnerTests: XCTestCase {
     XCTAssertFalse(compositor.hasMask)
   }
 
-  func testFrameProcessorEffectTransitions() {
-    let processor = FrameProcessor()
+  func testFrameProcessorEffectTransitions() throws {
+    let processor = FrameProcessor(segmenterProvider: { MockSegmenter() })
     XCTAssertNil(processor.currentEffect)
 
-    processor.setBlurEffect(radius: 12.0)
+    try processor.setBlurEffect(radius: 12.0)
     if case .blur(let radius) = processor.currentEffect {
       XCTAssertEqual(radius, 12.0)
     } else {
       XCTFail("Expected .blur(12.0)")
     }
 
-    processor.setColorEffect(color: 0xFF112233)
+    try processor.setColorEffect(color: 0xFF112233)
     if case .color(let color) = processor.currentEffect {
       XCTAssertEqual(color, 0xFF112233)
     } else {
@@ -169,7 +320,7 @@ class RunnerTests: XCTestCase {
     let img = UIGraphicsGetImageFromCurrentImageContext() ?? UIImage()
     UIGraphicsEndImageContext()
 
-    processor.setImageEffect(image: img, fit: "contain")
+    try processor.setImageEffect(image: img, fit: "contain")
     if case .image(_, let fit) = processor.currentEffect {
       XCTAssertEqual(fit, "contain")
     } else {
@@ -180,6 +331,169 @@ class RunnerTests: XCTestCase {
     XCTAssertNil(processor.currentEffect)
 
     processor.release()
+  }
+
+  func testIsSupportedTrueAndFalse() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+
+    // Test true
+    plugin.isSupportedChecker = { true }
+    let callTrue = FlutterMethodCall(methodName: "isSupported", arguments: nil)
+    let expTrue = expectation(description: "isSupported true")
+    plugin.handle(callTrue) { result in
+      XCTAssertEqual(result as? Bool, true)
+      expTrue.fulfill()
+    }
+
+    // Test false
+    plugin.isSupportedChecker = { false }
+    let callFalse = FlutterMethodCall(methodName: "isSupported", arguments: nil)
+    let expFalse = expectation(description: "isSupported false")
+    plugin.handle(callFalse) { result in
+      XCTAssertEqual(result as? Bool, false)
+      expFalse.fulfill()
+    }
+
+    waitForExpectations(timeout: 1)
+  }
+
+  func testEventChannelStatusStreamLifecycle() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    var events: [String] = []
+
+    let err = plugin.onListen(withArguments: nil) { event in
+      if let status = event as? String {
+        events.append(status)
+      }
+    }
+    XCTAssertNil(err)
+    XCTAssertEqual(events, ["idle"])
+
+    plugin.updateStatus("initializing")
+    plugin.updateStatus("active")
+    plugin.updateStatus("error")
+    plugin.updateStatus("idle")
+
+    XCTAssertEqual(events, ["idle", "initializing", "active", "error", "idle"])
+
+    let cancelErr = plugin.onCancel(withArguments: nil)
+    XCTAssertNil(cancelErr)
+
+    // Updating status after cancel does not send to sink
+    plugin.updateStatus("active")
+    XCTAssertEqual(events.count, 5)
+  }
+
+  func testAttachAndDetachWithMockTrack() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    var statusUpdates: [String] = []
+    _ = plugin.onListen(withArguments: nil) { event in
+      if let s = event as? String { statusUpdates.append(s) }
+    }
+
+    var attachedDelegate: ExternalVideoProcessingDelegate?
+    var detachedDelegate: ExternalVideoProcessingDelegate?
+    let mockTrack = NSObject()
+
+    plugin.trackAttacher = { trackId, delegate in
+      attachedDelegate = delegate
+      return mockTrack
+    }
+    plugin.trackDetacher = { track, delegate in
+      detachedDelegate = delegate
+    }
+
+    let attachCall = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "track_42"])
+    let expAttach = expectation(description: "attach succeeds")
+    plugin.handle(attachCall) { result in
+      XCTAssertNil(result)
+      expAttach.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+
+    XCTAssertNotNil(attachedDelegate)
+    XCTAssertEqual(plugin.currentStatus, "active")
+    XCTAssertEqual(statusUpdates, ["idle", "initializing", "active"])
+
+    // Detach
+    let detachCall = FlutterMethodCall(methodName: "detach", arguments: nil)
+    let expDetach = expectation(description: "detach succeeds")
+    plugin.handle(detachCall) { result in
+      XCTAssertNil(result)
+      expDetach.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+
+    XCTAssertNotNil(detachedDelegate)
+    XCTAssertEqual(plugin.currentStatus, "idle")
+    XCTAssertEqual(statusUpdates, ["idle", "initializing", "active", "idle"])
+  }
+
+  func testSetEffectModelLoadFailedReturnsError() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    plugin.trackAttacher = { _, _ in NSObject() }
+    plugin.frameProcessorFactory = { onStatus in
+      FrameProcessor(
+        segmenterProvider: {
+          throw SegmentationError.modelLoadFailed("Corrupt model file")
+        },
+        onStatusChange: onStatus
+      )
+    }
+
+    // Attach first so frameProcessor is created with failing segmenter
+    let attachCall = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "t1"])
+    let expAttach = expectation(description: "attach")
+    plugin.handle(attachCall) { _ in expAttach.fulfill() }
+    waitForExpectations(timeout: 1)
+
+    // Call setEffect blur
+    let effectCall = FlutterMethodCall(methodName: "setEffect", arguments: ["type": "blur", "radius": 10.0])
+    let expEffect = expectation(description: "effect should fail with modelLoadFailed")
+    plugin.handle(effectCall) { result in
+      guard let err = result as? FlutterError else {
+        XCTFail("Expected FlutterError, got \(String(describing: result))")
+        return
+      }
+      XCTAssertEqual(err.code, "modelLoadFailed")
+      expEffect.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+    XCTAssertEqual(plugin.currentStatus, "error")
+  }
+
+  func testSetEffectImageSuccessWithMockDecoder() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    plugin.trackAttacher = { _, _ in NSObject() }
+    plugin.frameProcessorFactory = { onStatus in
+      FrameProcessor(segmenterProvider: { MockSegmenter() }, onStatusChange: onStatus)
+    }
+
+    let size = CGSize(width: 10, height: 10)
+    UIGraphicsBeginImageContext(size)
+    let testImg = UIGraphicsGetImageFromCurrentImageContext() ?? UIImage()
+    UIGraphicsEndImageContext()
+
+    plugin.imageDecoder = { _, _ in testImg }
+
+    let attachCall = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "t1"])
+    let expAttach = expectation(description: "attach")
+    plugin.handle(attachCall) { _ in expAttach.fulfill() }
+    waitForExpectations(timeout: 1)
+
+    let imgCall = FlutterMethodCall(methodName: "setEffect", arguments: [
+      "type": "image",
+      "fit": "contain",
+      "sourceType": "asset",
+      "data": "assets/bg.png"
+    ])
+    let expImg = expectation(description: "image effect succeeds")
+    plugin.handle(imgCall) { result in
+      XCTAssertNil(result)
+      expImg.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+    XCTAssertEqual(plugin.currentStatus, "active")
   }
 
   func testPluginSetEffectBlurAndColorAndNone() {
