@@ -11,19 +11,22 @@ Applies blur, image, and solid color background effects to local camera tracks
 in flutter_webrtc based video call apps. Processing is fully on-device.
                        DESC
   s.homepage         = 'https://github.com/Azmi010/mi_virtual_background_kit'
-  s.license          = { :file => '../LICENSE' }
+  s.license          = { :type => 'MIT', :file => '../LICENSE' }
   s.author           = { 'Ulul Azmi' => 'ulul10039@gmail.com' }
-  s.source           = { :path => '.' }
-  s.source_files = 'mi_virtual_background_kit/Sources/mi_virtual_background_kit/**/*'
+  s.source           = { :git => 'https://github.com/Azmi010/mi_virtual_background_kit.git', :tag => s.version.to_s }
+  s.source_files     = 'mi_virtual_background_kit/Sources/mi_virtual_background_kit/**/*.{h,m,swift}'
   s.resource_bundles = {
-    'mi_virtual_background_kit' => ['mi_virtual_background_kit/Sources/mi_virtual_background_kit/Resources/**/*']
+    'mi_virtual_background_kit' => [
+      'mi_virtual_background_kit/Sources/mi_virtual_background_kit/Resources/**/*'
+    ]
   }
   s.dependency 'Flutter'
   s.dependency 'flutter_webrtc', '~> 1.6.2'
   s.dependency 'MediaPipeTasksVision'
-  s.platform = :ios, '15.0'
+  s.platform         = :ios, '15.0'
+  s.static_framework = true
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
-  s.swift_version = '5.0'
+  s.swift_version    = '5.0'
 end

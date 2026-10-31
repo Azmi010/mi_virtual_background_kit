@@ -197,9 +197,9 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
 
       let processor = frameProcessorFactory?({ [weak self] status in
         self?.updateStatus(status)
-      }) ?? FrameProcessor { [weak self] status in
+      }) ?? FrameProcessor(onStatusChange: { [weak self] status in
         self?.updateStatus(status)
-      }
+      })
 
       guard let track = attachFrameProcessor(trackId: trackId, processor: processor) else {
         updateStatus("error")
@@ -293,9 +293,9 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
         return
       }
       releaseFrameProcessor()
-      let processor = FrameProcessor { [weak self] status in
+      let processor = FrameProcessor(onStatusChange: { [weak self] status in
         self?.updateStatus(status)
-      }
+      })
       guard let track = attachFrameProcessor(trackId: trackId, processor: processor) else {
         result(false)
         return
