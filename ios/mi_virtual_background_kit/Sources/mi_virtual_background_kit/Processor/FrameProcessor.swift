@@ -195,7 +195,7 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
 
     private func triggerSegmentation(pixelBuffer: CVPixelBuffer, rotation: RTCVideoRotation) {
         lock.lock()
-        guard !isSegmenting, let seg = segmenter else {
+        guard !isReleased, !isSegmenting, let seg = segmenter else {
             lock.unlock()
             return
         }
@@ -204,6 +204,14 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
 
         segmentQueue.async { [weak self] in
             guard let self = self else { return }
+            self.lock.lock()
+            if self.isReleased {
+                self.isSegmenting = false
+                self.lock.unlock()
+                return
+            }
+            self.lock.unlock()
+
             defer {
                 self.lock.lock()
                 self.isSegmenting = false
@@ -212,7 +220,12 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
 
             do {
                 let mask = try seg.segment(pixelBuffer: pixelBuffer, rotation: rotation)
-                self.compositor.uploadMask(mask, rotation: Int32(rotation.rawValue))
+                self.lock.lock()
+                let released = self.isReleased
+                self.lock.unlock()
+                if !released {
+                    self.compositor.uploadMask(mask, rotation: Int32(rotation.rawValue))
+                }
             } catch {
                 NSLog("MiVBG segmentation error: \(error)")
             }
@@ -221,9 +234,18 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
 
     public func release() {
         lock.lock()
-        defer { lock.unlock() }
+        guard !isReleased else {
+            lock.unlock()
+            return
+        }
         isReleased = true
         currentEffect = nil
+        lock.unlock()
+
+        segmentQueue.sync {}
+
+        lock.lock()
+        defer { lock.unlock() }
         compositor.release()
         segmenter?.close()
         segmenter = nil

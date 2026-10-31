@@ -225,6 +225,36 @@ class _SpikePageState extends State<SpikePage> {
     return bytes;
   }
 
+  Future<void> _attach() async {
+    try {
+      final tracks = _stream?.getVideoTracks();
+      if (tracks == null || tracks.isEmpty) return;
+      final track = tracks.first;
+      await _kit.attach(track);
+      setState(() {
+        _prodAttached = true;
+        _spiked = false;
+        _activeEffectName = 'None';
+      });
+      debugPrint('PROD attached track=${track.id}');
+    } catch (e) {
+      debugPrint('PROD attach error: $e');
+    }
+  }
+
+  Future<void> _detach() async {
+    try {
+      await _kit.detach();
+      setState(() {
+        _prodAttached = false;
+        _activeEffectName = 'None';
+      });
+      debugPrint('PROD detached');
+    } catch (e) {
+      debugPrint('PROD detach error: $e');
+    }
+  }
+
   Future<void> _applyNone() async {
     await _kit.setEffect(const NoEffect());
     setState(() => _activeEffectName = 'None');
@@ -297,6 +327,23 @@ class _SpikePageState extends State<SpikePage> {
               style: const TextStyle(fontSize: 12),
             ),
           ],
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            alignment: WrapAlignment.center,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: _prodAttached ? null : _attach,
+                icon: const Icon(Icons.link, size: 18),
+                label: const Text('Attach'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: _prodAttached ? _detach : null,
+                icon: const Icon(Icons.link_off, size: 18),
+                label: const Text('Detach'),
+              ),
+            ],
+          ),
           const SizedBox(height: 6),
           if (_prodAttached) ...[
             Text(

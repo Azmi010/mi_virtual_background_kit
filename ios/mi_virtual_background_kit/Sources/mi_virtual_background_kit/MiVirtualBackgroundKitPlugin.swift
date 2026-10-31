@@ -97,6 +97,10 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
     spikeProcessor = nil
   }
 
+  deinit {
+    releaseFrameProcessor()
+  }
+
   private func decodeImage(sourceType: String, data: Any?) -> UIImage? {
     if let customDecoder = imageDecoder {
       return customDecoder(sourceType, data)

@@ -241,6 +241,115 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(detachCount, 1)
   }
 
+  func testAttachAndDetach_100Times_completesWithoutLeaksOrErrors() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    let dummyTrack = NSObject()
+    var attachCount = 0
+    var detachCount = 0
+
+    plugin.trackAttacher = { _, _ in
+      attachCount += 1
+      return dummyTrack
+    }
+    plugin.trackDetacher = { _, _ in
+      detachCount += 1
+    }
+    plugin.frameProcessorFactory = { onStatus in
+      FrameProcessor(segmenterProvider: { MockSegmenter() }, onStatusChange: onStatus)
+    }
+
+    for i in 1...100 {
+      let attachCall = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "track-\(i)"])
+      let expAttach = expectation(description: "attach \(i)")
+      plugin.handle(attachCall) { result in
+        XCTAssertNil(result)
+        expAttach.fulfill()
+      }
+      XCTAssertEqual(plugin.currentStatus, "active")
+
+      let detachCall = FlutterMethodCall(methodName: "detach", arguments: nil)
+      let expDetach = expectation(description: "detach \(i)")
+      plugin.handle(detachCall) { result in
+        XCTAssertNil(result)
+        expDetach.fulfill()
+      }
+      XCTAssertEqual(plugin.currentStatus, "idle")
+    }
+
+    waitForExpectations(timeout: 5)
+    XCTAssertEqual(attachCount, 100)
+    XCTAssertEqual(detachCount, 100)
+  }
+
+  func testDispose_cleansUpAttachedTrackAndProcessor() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    let dummyTrack = NSObject()
+    var detached = false
+
+    plugin.trackAttacher = { _, _ in dummyTrack }
+    plugin.trackDetacher = { _, _ in detached = true }
+    plugin.frameProcessorFactory = { onStatus in
+      FrameProcessor(segmenterProvider: { MockSegmenter() }, onStatusChange: onStatus)
+    }
+
+    let attachCall = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "track-1"])
+    let expAttach = expectation(description: "attach")
+    plugin.handle(attachCall) { _ in expAttach.fulfill() }
+    waitForExpectations(timeout: 1)
+    XCTAssertEqual(plugin.currentStatus, "active")
+
+    let disposeCall = FlutterMethodCall(methodName: "dispose", arguments: nil)
+    let expDispose = expectation(description: "dispose")
+    plugin.handle(disposeCall) { result in
+      XCTAssertNil(result)
+      expDispose.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+
+    XCTAssertTrue(detached)
+    XCTAssertEqual(plugin.currentStatus, "idle")
+
+    // Second dispose is idempotent
+    let expDispose2 = expectation(description: "dispose2")
+    plugin.handle(disposeCall) { result in
+      XCTAssertNil(result)
+      expDispose2.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+  }
+
+  func testFrameProcessorReleaseIsIdempotent() throws {
+    let mockSeg = MockSegmenter()
+    let processor = FrameProcessor(segmenterProvider: { mockSeg })
+
+    try processor.setBlurEffect(radius: 12.0)
+    XCTAssertNotNil(processor.currentEffect)
+
+    // First release
+    processor.release()
+    XCTAssertNil(processor.currentEffect)
+    XCTAssertTrue(mockSeg.closeCalled)
+
+    // Second release (idempotent)
+    processor.release()
+    XCTAssertNil(processor.currentEffect)
+  }
+
+  func testGpuCompositorReleaseIsIdempotent() {
+    let compositor = GpuCompositor()
+    let mask = PersonMask(alpha: [255, 0, 0, 255], width: 2, height: 2)
+    compositor.uploadMask(mask)
+    XCTAssertTrue(compositor.hasMask)
+
+    // First release
+    compositor.release()
+    XCTAssertFalse(compositor.hasMask)
+
+    // Second release (idempotent)
+    compositor.release()
+    XCTAssertFalse(compositor.hasMask)
+  }
+
   // MARK: - GpuCompositor & Compositing Tests
 
   func testGpuCompositorInitialStateAndUploadMask() {

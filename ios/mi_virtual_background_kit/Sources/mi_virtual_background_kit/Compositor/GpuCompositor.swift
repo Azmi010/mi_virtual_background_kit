@@ -297,6 +297,17 @@ public class GpuCompositor: FrameCompositor {
         defer { lock.unlock() }
         currentMaskImage = nil
         currentBackgroundImage = nil
+        backgroundImageSize = .zero
+        maskWidth = 0
+        maskHeight = 0
+        maskRotation = 0
+        poolWidth = 0
+        poolHeight = 0
+        poolFormat = 0
+        if let pool = bufferPool {
+            CVPixelBufferPoolFlush(pool, .excessBuffers)
+        }
         bufferPool = nil
+        ciContext.clearCaches()
     }
 }
