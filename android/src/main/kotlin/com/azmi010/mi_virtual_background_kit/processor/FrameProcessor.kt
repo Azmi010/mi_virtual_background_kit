@@ -90,6 +90,28 @@ class FrameProcessor(
     private var maskBufferB: ByteArray? = null
     private var useMaskBufferA = true
 
+    @Volatile
+    var segmentationWidth: Int = 256
+        private set
+
+    @Volatile
+    var edgeSmoothing: Float = 0.5f
+        private set
+
+    @Volatile
+    var targetFps: Int = 30
+        private set
+
+    private var lastCompositedTimestampNs: Long = 0L
+
+    /** Sets quality parameters controlling segmentation resolution, smoothing, and fps. */
+    fun setQuality(segmentationWidth: Int, edgeSmoothing: Float, targetFps: Int) {
+        this.segmentationWidth = segmentationWidth
+        this.edgeSmoothing = edgeSmoothing.coerceIn(0.0f, 1.0f)
+        this.targetFps = targetFps.coerceIn(1, 60)
+        compositor.edgeSmoothing = this.edgeSmoothing
+    }
+
     /** Sets the blur effect with the given [radius] (in range (0, 100]). */
     fun setBlurEffect(radius: Float) {
         currentEffect = EffectState.Blur(radius)
@@ -114,6 +136,7 @@ class FrameProcessor(
         currentEffect = null
         pendingMask = null
         pendingImageBitmap = null
+        lastCompositedTimestampNs = 0L
         compositor.clearMask()
     }
 
@@ -154,6 +177,18 @@ class FrameProcessor(
 
         val buffer = frame.buffer as? VideoFrame.TextureBuffer ?: return frame
 
+        val currentTimestamp = if (frame.timestampNs > 0) frame.timestampNs else System.nanoTime()
+        if (targetFps < 30 && lastCompositedTimestampNs > 0L) {
+            val elapsed = currentTimestamp - lastCompositedTimestampNs
+            val minIntervalNs = 1_000_000_000L / targetFps
+            if (elapsed < (minIntervalNs * 85 / 100)) {
+                val reused = compositor.reuseLastFrame(frame)
+                if (reused != null) {
+                    return reused
+                }
+            }
+        }
+
         // 1. Upload pending background image if available
         val newImg = pendingImageBitmap
         if (newImg != null) {
@@ -181,7 +216,7 @@ class FrameProcessor(
             val seg = segmenter
             if (seg != null) {
                 val rgbaBytes = try {
-                    compositor.readBackRgba(buffer)
+                    compositor.readBackRgba(buffer, segmentationWidth)
                 } catch (t: Throwable) {
                     Log.e(TAG, "Readback failed for segmentation: $t")
                     null
@@ -262,7 +297,10 @@ class FrameProcessor(
                     is EffectState.Color -> compositor.composeColor(frame, effect.color)
                     is EffectState.Image -> compositor.composeImage(frame, effect.fit)
                 }
-                if (composited != null) return composited
+                if (composited != null) {
+                    lastCompositedTimestampNs = currentTimestamp
+                    return composited
+                }
             } catch (t: Throwable) {
                 Log.e(TAG, "Compositing failed: $t")
             }

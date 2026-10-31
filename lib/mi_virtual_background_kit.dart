@@ -4,9 +4,11 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import 'mi_virtual_background_kit_platform_interface.dart';
 import 'src/effects/effects.dart';
+import 'src/quality/quality.dart';
 import 'src/status/status.dart';
 
 export 'src/effects/effects.dart';
+export 'src/quality/quality.dart';
 export 'src/status/status.dart';
 
 /// Real-time virtual background for local `flutter_webrtc` camera tracks.
@@ -28,18 +30,29 @@ class MiVirtualBackgroundKit {
   /// Processor status: idle, initializing, active, error.
   Stream<ProcessorStatus> get statusStream => _platform.statusStream;
 
-  /// Attaches the processor to a local camera [track].
+  /// Attaches the processor to a local camera [track] with optional [quality] settings.
   ///
   /// Throws [InvalidTrackException] if the track is null or has no id.
   /// Throws [UnsupportedPlatformException] if the platform rejects the track.
-  Future<void> attach(MediaStreamTrack track) async {
+  Future<void> attach(
+    MediaStreamTrack track, {
+    BackgroundQuality quality = const BackgroundQuality(),
+  }) async {
     _ensureNotDisposed();
     final id = track.id;
     if (id == null || id.isEmpty) {
       throw const InvalidTrackException('track has no id');
     }
-    await _platform.attach(id);
+    _validateQuality(quality);
+    await _platform.attach(id, quality: quality.toMap());
     _attached = true;
+  }
+
+  /// Updates the processing [quality] configuration at runtime (FR-11).
+  Future<void> setQuality(BackgroundQuality quality) async {
+    _ensureNotDisposed();
+    _validateQuality(quality);
+    await _platform.setQuality(quality.toMap());
   }
 
   /// Applies [effect] to subsequent frames. Idempotent; does not restart the
@@ -74,6 +87,33 @@ class MiVirtualBackgroundKit {
   void _ensureNotDisposed() {
     if (_disposed) {
       throw StateError('MiVirtualBackgroundKit has been disposed');
+    }
+  }
+
+  /// Validates [quality] configuration parameters (FR-11).
+  void _validateQuality(BackgroundQuality quality) {
+    if (quality.segmentationWidth <= 0) {
+      throw ArgumentError.value(
+        quality.segmentationWidth,
+        'segmentationWidth',
+        'must be positive',
+      );
+    }
+    if (quality.edgeSmoothing.isNaN ||
+        quality.edgeSmoothing < 0.0 ||
+        quality.edgeSmoothing > 1.0) {
+      throw ArgumentError.value(
+        quality.edgeSmoothing,
+        'edgeSmoothing',
+        'must be between 0.0 and 1.0',
+      );
+    }
+    if (quality.targetFps <= 0) {
+      throw ArgumentError.value(
+        quality.targetFps,
+        'targetFps',
+        'must be positive',
+      );
     }
   }
 

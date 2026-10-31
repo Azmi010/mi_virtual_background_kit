@@ -37,16 +37,22 @@ internal class FrameProcessorTest {
         override var hasMask: Boolean = false
         override var readbackWidth: Int = 2
         override var readbackHeight: Int = 2
+        override var edgeSmoothing: Float = 0.5f
         var released = false
         var composeBlurCalls = 0
         var composeColorCalls = 0
         var composeImageCalls = 0
+        var reuseLastFrameCalls = 0
+        var lastTargetWidth: Int = 0
         var lastRadius: Float? = null
         var lastColor: Int? = null
         var lastFit: String? = null
         var lastUploadedBitmap: Bitmap? = null
 
-        override fun readBackRgba(buffer: VideoFrame.TextureBuffer): ByteArray? = ByteArray(16)
+        override fun readBackRgba(buffer: VideoFrame.TextureBuffer, targetWidth: Int): ByteArray? {
+            lastTargetWidth = targetWidth
+            return ByteArray(16)
+        }
         override fun uploadMask(mask: PersonMask) {
             hasMask = true
         }
@@ -69,6 +75,10 @@ internal class FrameProcessorTest {
         override fun composeImage(frame: VideoFrame, fit: String): VideoFrame? {
             composeImageCalls++
             lastFit = fit
+            return frame
+        }
+        override fun reuseLastFrame(frame: VideoFrame): VideoFrame? {
+            reuseLastFrameCalls++
             return frame
         }
         override fun release() {
@@ -466,6 +476,96 @@ internal class FrameProcessorTest {
         assertTrue(!fakeCompositor.hasMask)
         val bypassResult = processor.onFrame(frame)
         assertSame(frame, bypassResult)
+
+        processor.release()
+    }
+
+    @Test
+    fun setQualityUpdatesParametersAndCompositor() {
+        val fakeCompositor = FakeCompositor()
+        val processor = FrameProcessor(
+            compositorProvider = { fakeCompositor },
+        )
+
+        assertEquals(256, processor.segmentationWidth)
+        assertEquals(0.5f, processor.edgeSmoothing)
+        assertEquals(30, processor.targetFps)
+
+        processor.setQuality(160, 0.25f, 15)
+        assertEquals(160, processor.segmentationWidth)
+        assertEquals(0.25f, processor.edgeSmoothing)
+        assertEquals(15, processor.targetFps)
+        assertEquals(0.25f, fakeCompositor.edgeSmoothing)
+
+        // Clamping checks
+        processor.setQuality(100, -0.5f, 0)
+        assertEquals(0.0f, processor.edgeSmoothing)
+        assertEquals(1, processor.targetFps)
+
+        processor.setQuality(512, 1.8f, 120)
+        assertEquals(1.0f, processor.edgeSmoothing)
+        assertEquals(60, processor.targetFps)
+
+        processor.release()
+    }
+
+    @Test
+    fun qualityParametersAffectReadbackWidth() {
+        val fakeSegmenter = FakeSegmenter()
+        val fakeCompositor = FakeCompositor()
+        val mockBuffer = Mockito.mock(VideoFrame.TextureBuffer::class.java)
+        Mockito.`when`(mockBuffer.unscaledWidth).thenReturn(640)
+        Mockito.`when`(mockBuffer.unscaledHeight).thenReturn(480)
+        Mockito.`when`(mockBuffer.type).thenReturn(VideoFrame.TextureBuffer.Type.RGB)
+        val frame = VideoFrame(mockBuffer, 0, 1000L)
+
+        val processor = FrameProcessor(
+            segmenterProvider = { fakeSegmenter },
+            compositorProvider = { fakeCompositor },
+        )
+        processor.setQuality(192, 0.4f, 30)
+        processor.setBlurEffect(10.0f)
+
+        processor.onFrame(frame)
+        assertEquals(192, fakeCompositor.lastTargetWidth)
+
+        processor.release()
+    }
+
+    @Test
+    fun targetFpsThrottling_reusesPreviousFrameWhenBelowInterval() {
+        val fakeSegmenter = FakeSegmenter()
+        val fakeCompositor = FakeCompositor()
+        fakeCompositor.uploadMask(PersonMask(ByteArray(4), 2, 2))
+        val mockBuffer = Mockito.mock(VideoFrame.TextureBuffer::class.java)
+        Mockito.`when`(mockBuffer.unscaledWidth).thenReturn(640)
+        Mockito.`when`(mockBuffer.unscaledHeight).thenReturn(480)
+        Mockito.`when`(mockBuffer.type).thenReturn(VideoFrame.TextureBuffer.Type.RGB)
+
+        val processor = FrameProcessor(
+            segmenterProvider = { fakeSegmenter },
+            compositorProvider = { fakeCompositor },
+        )
+        processor.setBlurEffect(15.0f)
+        processor.setQuality(256, 0.5f, 15) // target 15 fps => ~66.6ms interval
+
+        // Frame 1: 100ms
+        val f1 = VideoFrame(mockBuffer, 0, 100_000_000L)
+        processor.onFrame(f1)
+        assertEquals(1, fakeCompositor.composeBlurCalls)
+        assertEquals(0, fakeCompositor.reuseLastFrameCalls)
+
+        // Frame 2: 110ms (10ms later -> throttled!)
+        val f2 = VideoFrame(mockBuffer, 0, 110_000_000L)
+        processor.onFrame(f2)
+        assertEquals(1, fakeCompositor.composeBlurCalls)
+        assertEquals(1, fakeCompositor.reuseLastFrameCalls)
+
+        // Frame 3: 175ms (75ms later -> allowed)
+        val f3 = VideoFrame(mockBuffer, 0, 175_000_000L)
+        processor.onFrame(f3)
+        assertEquals(2, fakeCompositor.composeBlurCalls)
+        assertEquals(1, fakeCompositor.reuseLastFrameCalls)
 
         processor.release()
     }

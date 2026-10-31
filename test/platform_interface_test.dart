@@ -25,6 +25,7 @@ void main() {
       expectUnimplemented(() => platform.isSupported());
       expectUnimplemented(() => platform.attach('t'));
       expectUnimplemented(() => platform.setEffect(const {}));
+      expectUnimplemented(() => platform.setQuality(const {}));
       expectUnimplemented(() => platform.detach());
       expectUnimplemented(() => platform.dispose());
       expect(() => platform.statusStream, throwsUnimplementedError);

@@ -1,6 +1,8 @@
 import Flutter
 import UIKit
 import XCTest
+import WebRTC
+import flutter_webrtc
 
 @testable import mi_virtual_background_kit
 
@@ -21,6 +23,54 @@ class MockSegmenter: MaskSegmenter {
   func close() {
     closeCalled = true
   }
+}
+
+class MockCompositor: FrameCompositor {
+  var hasMask: Bool = false
+  var edgeSmoothing: Float = 0.5
+  var uploadMaskCalled = false
+  var clearMaskCalled = false
+  var composeBlurCalls = 0
+  var composeColorCalls = 0
+  var composeImageCalls = 0
+  var reuseLastFrameCalls = 0
+  var lastRadius: Float?
+  var lastColor: UInt32?
+  var lastFit: String?
+
+  func uploadMask(_ mask: PersonMask) {
+    hasMask = true
+    uploadMaskCalled = true
+  }
+  func uploadMask(_ mask: PersonMask, rotation: Int32) {
+    hasMask = true
+    uploadMaskCalled = true
+  }
+  func clearMask() {
+    hasMask = false
+    clearMaskCalled = true
+  }
+  func uploadImage(_ image: UIImage) {}
+  func composeBlur(frame: RTCVideoFrame, radius: Float) -> RTCVideoFrame? {
+    composeBlurCalls += 1
+    lastRadius = radius
+    return frame
+  }
+  func composeColor(frame: RTCVideoFrame, color: UInt32) -> RTCVideoFrame? {
+    composeColorCalls += 1
+    lastColor = color
+    return frame
+  }
+  func composeImage(frame: RTCVideoFrame, fit: String) -> RTCVideoFrame? {
+    composeImageCalls += 1
+    lastFit = fit
+    return frame
+  }
+  func reuseLastFrame(frame: RTCVideoFrame) -> RTCVideoFrame? {
+    reuseLastFrameCalls += 1
+    return frame
+  }
+  func release() {}
 }
 
 class RunnerTests: XCTestCase {
@@ -195,8 +245,8 @@ class RunnerTests: XCTestCase {
     plugin.trackDetacher = { track, _ in
       detachedTrack = track
     }
-    plugin.frameProcessorFactory = { onStatus in
-      return FrameProcessor(segmenterProvider: { MockSegmenter() }, onStatusChange: onStatus)
+    plugin.frameProcessorFactory = { () -> FrameProcessor in
+      return FrameProcessor(segmenterProvider: { MockSegmenter() })
     }
 
     let attachCall = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "cam_track_1"])
@@ -226,8 +276,8 @@ class RunnerTests: XCTestCase {
     var detachCount = 0
     plugin.trackAttacher = { _, _ in NSObject() }
     plugin.trackDetacher = { _, _ in detachCount += 1 }
-    plugin.frameProcessorFactory = { onStatus in
-      FrameProcessor(segmenterProvider: { MockSegmenter() }, onStatusChange: onStatus)
+    plugin.frameProcessorFactory = { () -> FrameProcessor in
+      FrameProcessor(segmenterProvider: { MockSegmenter() })
     }
 
     let call1 = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "track_1"])
@@ -254,8 +304,8 @@ class RunnerTests: XCTestCase {
     plugin.trackDetacher = { _, _ in
       detachCount += 1
     }
-    plugin.frameProcessorFactory = { onStatus in
-      FrameProcessor(segmenterProvider: { MockSegmenter() }, onStatusChange: onStatus)
+    plugin.frameProcessorFactory = { () -> FrameProcessor in
+      FrameProcessor(segmenterProvider: { MockSegmenter() })
     }
 
     for i in 1...100 {
@@ -288,8 +338,8 @@ class RunnerTests: XCTestCase {
 
     plugin.trackAttacher = { _, _ in dummyTrack }
     plugin.trackDetacher = { _, _ in detached = true }
-    plugin.frameProcessorFactory = { onStatus in
-      FrameProcessor(segmenterProvider: { MockSegmenter() }, onStatusChange: onStatus)
+    plugin.frameProcessorFactory = { () -> FrameProcessor in
+      FrameProcessor(segmenterProvider: { MockSegmenter() })
     }
 
     let attachCall = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "track-1"])
@@ -399,6 +449,92 @@ class RunnerTests: XCTestCase {
     // Second release (idempotent)
     compositor.release()
     XCTAssertFalse(compositor.hasMask)
+  }
+
+  func testFrameProcessorQualityParameters() {
+    let compositor = GpuCompositor()
+    let processor = FrameProcessor(compositor: compositor, segmenterProvider: { MockSegmenter() })
+
+    XCTAssertEqual(processor.segmentationWidth, 256)
+    XCTAssertEqual(processor.edgeSmoothing, 0.5)
+    XCTAssertEqual(processor.targetFps, 30)
+    XCTAssertEqual(compositor.edgeSmoothing, 0.5)
+
+    processor.setQuality(segmentationWidth: 160, edgeSmoothing: 0.25, targetFps: 15)
+    XCTAssertEqual(processor.segmentationWidth, 160)
+    XCTAssertEqual(processor.edgeSmoothing, 0.25)
+    XCTAssertEqual(processor.targetFps, 15)
+    XCTAssertEqual(compositor.edgeSmoothing, 0.25)
+
+    // Clamping checks
+    processor.setQuality(segmentationWidth: 200, edgeSmoothing: -0.5, targetFps: 0)
+    XCTAssertEqual(processor.edgeSmoothing, 0.0)
+    XCTAssertEqual(processor.targetFps, 1)
+
+    processor.setQuality(segmentationWidth: 512, edgeSmoothing: 1.5, targetFps: 120)
+    XCTAssertEqual(processor.edgeSmoothing, 1.0)
+    XCTAssertEqual(processor.targetFps, 60)
+
+    processor.release()
+  }
+
+  func testGpuCompositorEdgeSmoothing() {
+    let compositor = GpuCompositor()
+    XCTAssertEqual(compositor.edgeSmoothing, 0.5)
+
+    compositor.edgeSmoothing = 0.8
+    XCTAssertEqual(compositor.edgeSmoothing, 0.8)
+
+    compositor.edgeSmoothing = 0.0
+    XCTAssertEqual(compositor.edgeSmoothing, 0.0)
+
+    compositor.release()
+  }
+
+  func testPluginSetQualityAndAttachWithQuality() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    plugin.trackAttacher = { _, _ in NSObject() }
+    plugin.frameProcessorFactory = { () -> FrameProcessor in
+      FrameProcessor(segmenterProvider: { MockSegmenter() })
+    }
+
+    // Attach with quality parameters
+    let attachCall = FlutterMethodCall(
+      methodName: "attach",
+      arguments: [
+        "trackId": "cam_track_quality",
+        "quality": [
+          "segmentationWidth": 160,
+          "edgeSmoothing": 0.35,
+          "targetFps": 15
+        ]
+      ]
+    )
+    let expAttach = expectation(description: "attach with quality")
+    plugin.handle(attachCall) { result in
+      XCTAssertNil(result)
+      expAttach.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+    XCTAssertEqual(plugin.currentStatus, "active")
+
+    // Set quality via MethodChannel
+    let qualityCall = FlutterMethodCall(
+      methodName: "setQuality",
+      arguments: [
+        "segmentationWidth": 256,
+        "edgeSmoothing": 0.75,
+        "targetFps": 24
+      ]
+    )
+    let expQuality = expectation(description: "setQuality succeeds")
+    plugin.handle(qualityCall) { result in
+      XCTAssertNil(result)
+      expQuality.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+
+    plugin.handle(FlutterMethodCall(methodName: "dispose", arguments: nil)) { _ in }
   }
 
   // MARK: - GpuCompositor & Compositing Tests
@@ -592,12 +728,11 @@ class RunnerTests: XCTestCase {
   func testSetEffectModelLoadFailedReturnsError() {
     let plugin = MiVirtualBackgroundKitPlugin()
     plugin.trackAttacher = { _, _ in NSObject() }
-    plugin.frameProcessorFactory = { onStatus in
+    plugin.frameProcessorFactory = { () -> FrameProcessor in
       FrameProcessor(
         segmenterProvider: {
           throw SegmentationError.modelLoadFailed("Corrupt model file")
-        },
-        onStatusChange: onStatus
+        }
       )
     }
 
@@ -625,8 +760,8 @@ class RunnerTests: XCTestCase {
   func testSetEffectImageSuccessWithMockDecoder() {
     let plugin = MiVirtualBackgroundKitPlugin()
     plugin.trackAttacher = { _, _ in NSObject() }
-    plugin.frameProcessorFactory = { onStatus in
-      FrameProcessor(segmenterProvider: { MockSegmenter() }, onStatusChange: onStatus)
+    plugin.frameProcessorFactory = { () -> FrameProcessor in
+      FrameProcessor(segmenterProvider: { MockSegmenter() })
     }
 
     let size = CGSize(width: 10, height: 10)
@@ -799,6 +934,12 @@ class RunnerTests: XCTestCase {
       return image
     }
 
+    let sourceDir = (URL(fileURLWithPath: #file).deletingLastPathComponent().path)
+    let directPath = (sourceDir as NSString).appendingPathComponent("person_frame.png")
+    if FileManager.default.fileExists(atPath: directPath), let image = UIImage(contentsOfFile: directPath) {
+      return image
+    }
+
     let candidates = [
       "RunnerTests/person_frame.png",
       "example/ios/RunnerTests/person_frame.png",
@@ -872,5 +1013,59 @@ class RunnerTests: XCTestCase {
       totalPixels / 20,
       "Expected person pixels > \(totalPixels / 20), got \(personPixels) out of \(totalPixels)"
     )
+  }
+
+  private func createTestCVPixelBuffer(width: Int = 16, height: Int = 16) -> CVPixelBuffer? {
+    var pixelBuffer: CVPixelBuffer?
+    let attrs: [CFString: Any] = [
+      kCVPixelBufferCGImageCompatibilityKey: true,
+      kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+    ]
+    let status = CVPixelBufferCreate(
+      kCFAllocatorDefault,
+      width,
+      height,
+      kCVPixelFormatType_32BGRA,
+      attrs as CFDictionary,
+      &pixelBuffer
+    )
+    return status == kCVReturnSuccess ? pixelBuffer : nil
+  }
+
+  func testTargetFpsThrottling_reusesPreviousFrame() throws {
+    let mockCompositor = MockCompositor()
+    mockCompositor.uploadMask(PersonMask(alpha: [255], width: 1, height: 1))
+    let processor = FrameProcessor(
+      compositor: mockCompositor,
+      segmenterProvider: { MockSegmenter() }
+    )
+    try processor.setBlurEffect(radius: 12.0)
+    processor.setQuality(segmentationWidth: 256, edgeSmoothing: 0.5, targetFps: 15) // interval: ~66.6ms
+
+    guard let pb = createTestCVPixelBuffer() else {
+      XCTFail("Could not create pixel buffer")
+      return
+    }
+    let rtcBuffer = RTCCVPixelBuffer(pixelBuffer: pb)
+
+    // Frame 1: 100ms
+    let f1 = RTCVideoFrame(buffer: rtcBuffer, rotation: ._0, timeStampNs: 100_000_000)
+    _ = processor.onFrame(f1)
+    XCTAssertEqual(mockCompositor.composeBlurCalls, 1)
+    XCTAssertEqual(mockCompositor.reuseLastFrameCalls, 0)
+
+    // Frame 2: 110ms (10ms later -> throttled!)
+    let f2 = RTCVideoFrame(buffer: rtcBuffer, rotation: ._0, timeStampNs: 110_000_000)
+    _ = processor.onFrame(f2)
+    XCTAssertEqual(mockCompositor.composeBlurCalls, 1)
+    XCTAssertEqual(mockCompositor.reuseLastFrameCalls, 1)
+
+    // Frame 3: 175ms (75ms later -> allowed)
+    let f3 = RTCVideoFrame(buffer: rtcBuffer, rotation: ._0, timeStampNs: 175_000_000)
+    _ = processor.onFrame(f3)
+    XCTAssertEqual(mockCompositor.composeBlurCalls, 2)
+    XCTAssertEqual(mockCompositor.reuseLastFrameCalls, 1)
+
+    processor.release()
   }
 }

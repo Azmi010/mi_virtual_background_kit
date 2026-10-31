@@ -24,12 +24,22 @@ class MethodChannelMiVirtualBackgroundKit
   }
 
   @override
-  Future<void> attach(String trackId) async {
+  Future<void> attach(String trackId, {Map<String, Object?>? quality}) async {
     await _guard(
       () => methodChannel.invokeMethod<void>(
         'attach',
-        <String, Object?>{'trackId': trackId},
+        <String, Object?>{
+          'trackId': trackId,
+          if (quality != null) 'quality': quality,
+        },
       ),
+    );
+  }
+
+  @override
+  Future<void> setQuality(Map<String, Object?> quality) async {
+    await _guard(
+      () => methodChannel.invokeMethod<void>('setQuality', quality),
     );
   }
 

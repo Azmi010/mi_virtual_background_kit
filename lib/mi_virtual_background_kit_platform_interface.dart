@@ -36,9 +36,14 @@ abstract class MiVirtualBackgroundKitPlatform extends PlatformInterface {
     throw UnimplementedError('isSupported() has not been implemented.');
   }
 
-  /// Attaches the processor to the camera track with the given [trackId].
-  Future<void> attach(String trackId) {
+  /// Attaches the processor to the camera track with the given [trackId] and optional [quality].
+  Future<void> attach(String trackId, {Map<String, Object?>? quality}) {
     throw UnimplementedError('attach() has not been implemented.');
+  }
+
+  /// Updates the processing [quality] configuration at runtime.
+  Future<void> setQuality(Map<String, Object?> quality) {
+    throw UnimplementedError('setQuality() has not been implemented.');
   }
 
   /// Applies [effect] (already serialized via `toMap()`).

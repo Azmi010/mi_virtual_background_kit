@@ -33,6 +33,11 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
     private var _bufferType: String = ""
     private var isReleased: Bool = false
 
+    public private(set) var segmentationWidth: Int = 256
+    public private(set) var edgeSmoothing: Float = 0.5
+    public private(set) var targetFps: Int = 30
+    private var lastCompositedTimestampNs: Int64 = 0
+
     public var currentEffect: EffectState?
 
     private let compositor: FrameCompositor
@@ -109,9 +114,19 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         try ensureSegmenter()
     }
 
+    public func setQuality(segmentationWidth: Int, edgeSmoothing: Float, targetFps: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.segmentationWidth = segmentationWidth
+        self.edgeSmoothing = max(0.0, min(1.0, edgeSmoothing))
+        self.targetFps = max(1, min(60, targetFps))
+        compositor.edgeSmoothing = self.edgeSmoothing
+    }
+
     public func clearEffect() {
         lock.lock()
         currentEffect = nil
+        lastCompositedTimestampNs = 0
         lock.unlock()
         compositor.clearMask()
     }
@@ -168,6 +183,22 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         }
         let pixelBuffer = rtcBuffer.pixelBuffer
 
+        let currentTimestamp = frame.timeStampNs > 0 ? frame.timeStampNs : Int64(Date().timeIntervalSince1970 * 1_000_000_000)
+        lock.lock()
+        let fps = targetFps
+        let lastNs = lastCompositedTimestampNs
+        lock.unlock()
+
+        if fps < 30 && lastNs > 0 {
+            let elapsed = currentTimestamp - lastNs
+            let minIntervalNs = Int64(1_000_000_000 / fps)
+            if elapsed < (minIntervalNs * 85 / 100) {
+                if let reused = compositor.reuseLastFrame(frame: frame) {
+                    return reused
+                }
+            }
+        }
+
         // 2. Trigger asynchronous segmentation if worker is idle
         if !compositor.hasMask || currentFrames % FrameProcessor.segmentEveryNFrames == 0 {
             triggerSegmentation(pixelBuffer: pixelBuffer, rotation: frame.rotation)
@@ -175,19 +206,20 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
 
         // 3. Composite using latest available mask
         if compositor.hasMask {
+            let composed: RTCVideoFrame?
             switch activeEffect {
             case .blur(let radius):
-                if let composed = compositor.composeBlur(frame: frame, radius: radius) {
-                    return composed
-                }
+                composed = compositor.composeBlur(frame: frame, radius: radius)
             case .color(let color):
-                if let composed = compositor.composeColor(frame: frame, color: color) {
-                    return composed
-                }
+                composed = compositor.composeColor(frame: frame, color: color)
             case .image(_, let fit):
-                if let composed = compositor.composeImage(frame: frame, fit: fit) {
-                    return composed
-                }
+                composed = compositor.composeImage(frame: frame, fit: fit)
+            }
+            if let output = composed {
+                lock.lock()
+                lastCompositedTimestampNs = currentTimestamp
+                lock.unlock()
+                return output
             }
         }
 

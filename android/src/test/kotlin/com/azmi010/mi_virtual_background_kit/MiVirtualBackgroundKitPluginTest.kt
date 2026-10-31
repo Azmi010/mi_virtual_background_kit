@@ -239,4 +239,40 @@ internal class MiVirtualBackgroundKitPluginTest {
         assertTrue(detached)
         assertEquals("idle", plugin.currentStatus)
     }
+
+    @Test
+    fun onMethodCall_setQuality_succeeds() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+        val dummyTrack = Any()
+        plugin.trackAttacher = { _, _ -> dummyTrack }
+
+        // Attach with quality
+        val attachCall = MethodCall(
+            "attach",
+            mapOf(
+                "trackId" to "track-1",
+                "quality" to mapOf(
+                    "segmentationWidth" to 160,
+                    "edgeSmoothing" to 0.3,
+                    "targetFps" to 15,
+                ),
+            ),
+        )
+        val attachResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(attachCall, attachResult)
+        Mockito.verify(attachResult).success(null)
+
+        // Set quality at runtime
+        val qualityCall = MethodCall(
+            "setQuality",
+            mapOf(
+                "segmentationWidth" to 256,
+                "edgeSmoothing" to 0.8,
+                "targetFps" to 24,
+            ),
+        )
+        val qualityResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(qualityCall, qualityResult)
+        Mockito.verify(qualityResult).success(null)
+    }
 }

@@ -12,7 +12,7 @@ let package = Package(
         .library(name: "mi-virtual-background-kit", targets: ["mi_virtual_background_kit"])
     ],
     dependencies: [
-        .package(name: "flutter_webrtc", path: "../flutter_webrtc"),
+        .package(name: "flutter_webrtc", path: "../flutter_webrtc-1.6.2+hotfix.4"),
         .package(name: "FlutterFramework", path: "../FlutterFramework"),
         .package(url: "https://github.com/google-ai-edge/mediapipe", branch: "master")
     ],

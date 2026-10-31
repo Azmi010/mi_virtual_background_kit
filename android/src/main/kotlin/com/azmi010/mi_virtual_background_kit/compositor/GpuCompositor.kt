@@ -22,13 +22,15 @@ interface FrameCompositor {
     val hasMask: Boolean
     val readbackWidth: Int
     val readbackHeight: Int
-    fun readBackRgba(buffer: VideoFrame.TextureBuffer): ByteArray?
+    var edgeSmoothing: Float
+    fun readBackRgba(buffer: VideoFrame.TextureBuffer, targetWidth: Int = 0): ByteArray?
     fun uploadMask(mask: PersonMask)
     fun clearMask()
     fun uploadImage(bitmap: Bitmap)
     fun composeBlur(frame: VideoFrame, radius: Float): VideoFrame?
     fun composeColor(frame: VideoFrame, color: Int): VideoFrame?
     fun composeImage(frame: VideoFrame, fit: String): VideoFrame?
+    fun reuseLastFrame(frame: VideoFrame): VideoFrame?
     fun release()
 }
 
@@ -80,6 +82,7 @@ class GpuCompositor : FrameCompositor {
     private var blOesUMaskTex = 0
     private var blOesUTexelSize = 0
     private var blOesUTexelScale = 0
+    private var blOesUEdgeSmoothing = 0
 
     // Blur composite program (2D)
     private var blurProgram2D = 0
@@ -90,6 +93,7 @@ class GpuCompositor : FrameCompositor {
     private var bl2dUMaskTex = 0
     private var bl2dUTexelSize = 0
     private var bl2dUTexelScale = 0
+    private var bl2dUEdgeSmoothing = 0
 
     // Color composite program (OES & 2D)
     private var colorProgramOes = 0
@@ -99,7 +103,9 @@ class GpuCompositor : FrameCompositor {
     private var clOesUCamTex = 0
     private var clOesUMaskTex = 0
     private var clOesUColor = 0
+    private var clOesUEdgeSmoothing = 0
 
+    // Color composite program (2D)
     private var colorProgram2D = 0
     private var cl2dAPos = 0
     private var cl2dATex = 0
@@ -107,6 +113,7 @@ class GpuCompositor : FrameCompositor {
     private var cl2dUCamTex = 0
     private var cl2dUMaskTex = 0
     private var cl2dUColor = 0
+    private var cl2dUEdgeSmoothing = 0
 
     // Image composite program (OES & 2D)
     private var imageProgramOes = 0
@@ -118,6 +125,7 @@ class GpuCompositor : FrameCompositor {
     private var imOesUMaskTex = 0
     private var imOesUImgTex = 0
     private var imOesUFitMode = 0
+    private var imOesUEdgeSmoothing = 0
 
     private var imageProgram2D = 0
     private var im2dAPos = 0
@@ -128,6 +136,15 @@ class GpuCompositor : FrameCompositor {
     private var im2dUMaskTex = 0
     private var im2dUImgTex = 0
     private var im2dUFitMode = 0
+    private var im2dUEdgeSmoothing = 0
+
+    override var edgeSmoothing: Float = 0.5f
+
+    // Readback FBO and texture (decoupled from outTexture)
+    private var readbackFbo = 0
+    private var readbackTexture = 0
+    private var readbackFboWidth = 0
+    private var readbackFboHeight = 0
 
     // Mask texture
     private var maskTextureId = 0
@@ -178,13 +195,59 @@ class GpuCompositor : FrameCompositor {
         if (texCoordBuffer == null) texCoordBuffer = GlUtil.createFloatBuffer(texCoords)
     }
 
+    private fun createReadbackFbo(width: Int, height: Int) {
+        if (readbackFbo != 0) {
+            GLES20.glDeleteFramebuffers(1, intArrayOf(readbackFbo), 0)
+            readbackFbo = 0
+        }
+        if (readbackTexture != 0) {
+            GLES20.glDeleteTextures(1, intArrayOf(readbackTexture), 0)
+            readbackTexture = 0
+        }
+
+        val textures = IntArray(1)
+        GLES20.glGenTextures(1, textures, 0)
+        readbackTexture = textures[0]
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, readbackTexture)
+        GLES20.glTexImage2D(
+            GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, width, height, 0,
+            GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null,
+        )
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+
+        val buffers = IntArray(1)
+        GLES20.glGenFramebuffers(1, buffers, 0)
+        readbackFbo = buffers[0]
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, readbackFbo)
+        GLES20.glFramebufferTexture2D(
+            GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+            GLES20.GL_TEXTURE_2D, readbackTexture, 0,
+        )
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+
+        readbackFboWidth = width
+        readbackFboHeight = height
+    }
+
     /**
      * Reads camera texture back into a CPU RGBA byte array for person segmentation.
+     * Optionally downsamples to [targetWidth] (e.g. 160 or 256) to save CPU and inference time.
      * Must be called on the capture thread.
      */
-    override fun readBackRgba(buffer: VideoFrame.TextureBuffer): ByteArray? {
-        val width = buffer.unscaledWidth
-        val height = buffer.unscaledHeight
+    override fun readBackRgba(buffer: VideoFrame.TextureBuffer, targetWidth: Int): ByteArray? {
+        val width: Int
+        val height: Int
+        if (targetWidth in 64 until buffer.unscaledWidth) {
+            width = targetWidth
+            val calcH = ((targetWidth.toLong() * buffer.unscaledHeight) / buffer.unscaledWidth).toInt()
+            height = maxOf(2, (calcH / 2) * 2)
+        } else {
+            width = buffer.unscaledWidth
+            height = buffer.unscaledHeight
+        }
         val isOes = buffer.type == VideoFrame.TextureBuffer.Type.OES
         val target = if (isOes) GLES11Ext.GL_TEXTURE_EXTERNAL_OES else GLES20.GL_TEXTURE_2D
 
@@ -197,11 +260,11 @@ class GpuCompositor : FrameCompositor {
         val outArr = readbackArray ?: return null
         outBuf.position(0)
 
-        if (outWidth != width || outHeight != height) {
-            createOutput(width, height)
+        if (readbackFboWidth != width || readbackFboHeight != height) {
+            createReadbackFbo(width, height)
         }
 
-        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo)
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, readbackFbo)
         GLES20.glViewport(0, 0, width, height)
 
         val texMatrix = convertMatrix(buffer.transformMatrix, camMatrixArray)
@@ -348,6 +411,7 @@ class GpuCompositor : FrameCompositor {
                 blOesUMaskTex,
                 blOesUTexelSize,
                 blOesUTexelScale,
+                blOesUEdgeSmoothing,
                 target,
                 buffer.textureId,
                 maskTextureId,
@@ -367,6 +431,7 @@ class GpuCompositor : FrameCompositor {
                 bl2dUMaskTex,
                 bl2dUTexelSize,
                 bl2dUTexelScale,
+                bl2dUEdgeSmoothing,
                 target,
                 buffer.textureId,
                 maskTextureId,
@@ -427,6 +492,7 @@ class GpuCompositor : FrameCompositor {
                 clOesUCamTex,
                 clOesUMaskTex,
                 clOesUColor,
+                clOesUEdgeSmoothing,
                 target,
                 buffer.textureId,
                 maskTextureId,
@@ -443,6 +509,7 @@ class GpuCompositor : FrameCompositor {
                 cl2dUCamTex,
                 cl2dUMaskTex,
                 cl2dUColor,
+                cl2dUEdgeSmoothing,
                 target,
                 buffer.textureId,
                 maskTextureId,
@@ -503,6 +570,7 @@ class GpuCompositor : FrameCompositor {
                 imOesUMaskTex,
                 imOesUImgTex,
                 imOesUFitMode,
+                imOesUEdgeSmoothing,
                 target,
                 buffer.textureId,
                 maskTextureId,
@@ -523,6 +591,7 @@ class GpuCompositor : FrameCompositor {
                 im2dUMaskTex,
                 im2dUImgTex,
                 im2dUFitMode,
+                im2dUEdgeSmoothing,
                 target,
                 buffer.textureId,
                 maskTextureId,
@@ -538,6 +607,24 @@ class GpuCompositor : FrameCompositor {
         val outBuffer = TextureBufferImpl(
             width,
             height,
+            VideoFrame.TextureBuffer.Type.RGB,
+            outTexture,
+            IDENTITY_MATRIX,
+            null,
+            yuvConverter,
+            EMPTY_RELEASE_CALLBACK,
+        )
+        return VideoFrame(outBuffer, frame.rotation, frame.timestampNs)
+    }
+
+    /**
+     * Reuses the previous composited output frame for rate limiting (targetFps < 30).
+     */
+    override fun reuseLastFrame(frame: VideoFrame): VideoFrame? {
+        if (outTexture == 0 || outWidth == 0 || outHeight == 0) return null
+        val outBuffer = TextureBufferImpl(
+            outWidth,
+            outHeight,
             VideoFrame.TextureBuffer.Type.RGB,
             outTexture,
             IDENTITY_MATRIX,
@@ -703,6 +790,7 @@ class GpuCompositor : FrameCompositor {
         uMaskTex: Int,
         uTexelSize: Int,
         uTexelScale: Int,
+        uEdgeSmoothing: Int,
         target: Int,
         camTextureId: Int,
         maskTextureId: Int,
@@ -725,6 +813,7 @@ class GpuCompositor : FrameCompositor {
         GLES20.glUniformMatrix4fv(uCamTransform, 1, false, texMatrix, 0)
         GLES20.glUniform2f(uTexelSize, texelWidth, texelHeight)
         GLES20.glUniform1f(uTexelScale, texelScale)
+        GLES20.glUniform1f(uEdgeSmoothing, edgeSmoothing)
 
         vertexBuffer?.position(0)
         GLES20.glEnableVertexAttribArray(aPos)
@@ -752,6 +841,7 @@ class GpuCompositor : FrameCompositor {
         uCamTex: Int,
         uMaskTex: Int,
         uColor: Int,
+        uEdgeSmoothing: Int,
         target: Int,
         camTextureId: Int,
         maskTextureId: Int,
@@ -773,6 +863,7 @@ class GpuCompositor : FrameCompositor {
 
         GLES20.glUniformMatrix4fv(uCamTransform, 1, false, texMatrix, 0)
         GLES20.glUniform3f(uColor, r, g, b)
+        GLES20.glUniform1f(uEdgeSmoothing, edgeSmoothing)
 
         vertexBuffer?.position(0)
         GLES20.glEnableVertexAttribArray(aPos)
@@ -802,6 +893,7 @@ class GpuCompositor : FrameCompositor {
         uMaskTex: Int,
         uImgTex: Int,
         uFitMode: Int,
+        uEdgeSmoothing: Int,
         target: Int,
         camTextureId: Int,
         maskTextureId: Int,
@@ -831,6 +923,7 @@ class GpuCompositor : FrameCompositor {
         GLES20.glUniformMatrix4fv(uCamTransform, 1, false, camMatrix, 0)
         GLES20.glUniformMatrix4fv(uImgTransform, 1, false, imgMatrix, 0)
         GLES20.glUniform1i(uFitMode, fitMode)
+        GLES20.glUniform1f(uEdgeSmoothing, edgeSmoothing)
 
         vertexBuffer?.position(0)
         GLES20.glEnableVertexAttribArray(aPos)
@@ -946,9 +1039,18 @@ class GpuCompositor : FrameCompositor {
             uniform sampler2D uMaskTex;
             uniform vec2 uTexelSize;
             uniform float uTexelScale;
+            uniform float uEdgeSmoothing;
 
             void main() {
-                float personAlpha = texture2D(uMaskTex, vMaskTex).r;
+                float rawAlpha = texture2D(uMaskTex, vMaskTex).r;
+                float personAlpha;
+                if (uEdgeSmoothing <= 0.0) {
+                    personAlpha = step(0.5, rawAlpha);
+                } else {
+                    float low = max(0.0, 0.5 - uEdgeSmoothing * 0.45);
+                    float high = min(1.0, 0.5 + uEdgeSmoothing * 0.45);
+                    personAlpha = smoothstep(low, high, rawAlpha);
+                }
                 vec4 original = texture2D(uCamTex, vCamTex);
 
                 vec4 blurSum = vec4(0.0);
@@ -975,6 +1077,7 @@ class GpuCompositor : FrameCompositor {
         blOesUMaskTex = GLES20.glGetUniformLocation(p, "uMaskTex")
         blOesUTexelSize = GLES20.glGetUniformLocation(p, "uTexelSize")
         blOesUTexelScale = GLES20.glGetUniformLocation(p, "uTexelScale")
+        blOesUEdgeSmoothing = GLES20.glGetUniformLocation(p, "uEdgeSmoothing")
     }
 
     private fun buildBlurProgram2D() {
@@ -998,9 +1101,18 @@ class GpuCompositor : FrameCompositor {
             uniform sampler2D uMaskTex;
             uniform vec2 uTexelSize;
             uniform float uTexelScale;
+            uniform float uEdgeSmoothing;
 
             void main() {
-                float personAlpha = texture2D(uMaskTex, vMaskTex).r;
+                float rawAlpha = texture2D(uMaskTex, vMaskTex).r;
+                float personAlpha;
+                if (uEdgeSmoothing <= 0.0) {
+                    personAlpha = step(0.5, rawAlpha);
+                } else {
+                    float low = max(0.0, 0.5 - uEdgeSmoothing * 0.45);
+                    float high = min(1.0, 0.5 + uEdgeSmoothing * 0.45);
+                    personAlpha = smoothstep(low, high, rawAlpha);
+                }
                 vec4 original = texture2D(uCamTex, vCamTex);
 
                 vec4 blurSum = vec4(0.0);
@@ -1027,6 +1139,7 @@ class GpuCompositor : FrameCompositor {
         bl2dUMaskTex = GLES20.glGetUniformLocation(p, "uMaskTex")
         bl2dUTexelSize = GLES20.glGetUniformLocation(p, "uTexelSize")
         bl2dUTexelScale = GLES20.glGetUniformLocation(p, "uTexelScale")
+        bl2dUEdgeSmoothing = GLES20.glGetUniformLocation(p, "uEdgeSmoothing")
     }
 
     private fun buildColorProgramOes() {
@@ -1050,9 +1163,18 @@ class GpuCompositor : FrameCompositor {
             uniform samplerExternalOES uCamTex;
             uniform sampler2D uMaskTex;
             uniform vec3 uColor;
+            uniform float uEdgeSmoothing;
 
             void main() {
-                float personAlpha = texture2D(uMaskTex, vMaskTex).r;
+                float rawAlpha = texture2D(uMaskTex, vMaskTex).r;
+                float personAlpha;
+                if (uEdgeSmoothing <= 0.0) {
+                    personAlpha = step(0.5, rawAlpha);
+                } else {
+                    float low = max(0.0, 0.5 - uEdgeSmoothing * 0.45);
+                    float high = min(1.0, 0.5 + uEdgeSmoothing * 0.45);
+                    personAlpha = smoothstep(low, high, rawAlpha);
+                }
                 vec4 original = texture2D(uCamTex, vCamTex);
                 gl_FragColor = vec4(mix(uColor, original.rgb, personAlpha), 1.0);
             }
@@ -1065,6 +1187,7 @@ class GpuCompositor : FrameCompositor {
         clOesUCamTex = GLES20.glGetUniformLocation(p, "uCamTex")
         clOesUMaskTex = GLES20.glGetUniformLocation(p, "uMaskTex")
         clOesUColor = GLES20.glGetUniformLocation(p, "uColor")
+        clOesUEdgeSmoothing = GLES20.glGetUniformLocation(p, "uEdgeSmoothing")
     }
 
     private fun buildColorProgram2D() {
@@ -1087,9 +1210,18 @@ class GpuCompositor : FrameCompositor {
             uniform sampler2D uCamTex;
             uniform sampler2D uMaskTex;
             uniform vec3 uColor;
+            uniform float uEdgeSmoothing;
 
             void main() {
-                float personAlpha = texture2D(uMaskTex, vMaskTex).r;
+                float rawAlpha = texture2D(uMaskTex, vMaskTex).r;
+                float personAlpha;
+                if (uEdgeSmoothing <= 0.0) {
+                    personAlpha = step(0.5, rawAlpha);
+                } else {
+                    float low = max(0.0, 0.5 - uEdgeSmoothing * 0.45);
+                    float high = min(1.0, 0.5 + uEdgeSmoothing * 0.45);
+                    personAlpha = smoothstep(low, high, rawAlpha);
+                }
                 vec4 original = texture2D(uCamTex, vCamTex);
                 gl_FragColor = vec4(mix(uColor, original.rgb, personAlpha), 1.0);
             }
@@ -1102,6 +1234,7 @@ class GpuCompositor : FrameCompositor {
         cl2dUCamTex = GLES20.glGetUniformLocation(p, "uCamTex")
         cl2dUMaskTex = GLES20.glGetUniformLocation(p, "uMaskTex")
         cl2dUColor = GLES20.glGetUniformLocation(p, "uColor")
+        cl2dUEdgeSmoothing = GLES20.glGetUniformLocation(p, "uEdgeSmoothing")
     }
 
     private fun buildImageProgramOes() {
@@ -1130,9 +1263,18 @@ class GpuCompositor : FrameCompositor {
             uniform sampler2D uMaskTex;
             uniform sampler2D uImgTex;
             uniform int uFitMode;
+            uniform float uEdgeSmoothing;
 
             void main() {
-                float personAlpha = texture2D(uMaskTex, vMaskTex).r;
+                float rawAlpha = texture2D(uMaskTex, vMaskTex).r;
+                float personAlpha;
+                if (uEdgeSmoothing <= 0.0) {
+                    personAlpha = step(0.5, rawAlpha);
+                } else {
+                    float low = max(0.0, 0.5 - uEdgeSmoothing * 0.45);
+                    float high = min(1.0, 0.5 + uEdgeSmoothing * 0.45);
+                    personAlpha = smoothstep(low, high, rawAlpha);
+                }
                 vec4 original = texture2D(uCamTex, vCamTex);
                 vec4 bg;
                 if (uFitMode == 1 && (vImgTex.x < 0.0 || vImgTex.x > 1.0 || vImgTex.y < 0.0 || vImgTex.y > 1.0)) {
@@ -1153,6 +1295,7 @@ class GpuCompositor : FrameCompositor {
         imOesUMaskTex = GLES20.glGetUniformLocation(p, "uMaskTex")
         imOesUImgTex = GLES20.glGetUniformLocation(p, "uImgTex")
         imOesUFitMode = GLES20.glGetUniformLocation(p, "uFitMode")
+        imOesUEdgeSmoothing = GLES20.glGetUniformLocation(p, "uEdgeSmoothing")
     }
 
     private fun buildImageProgram2D() {
@@ -1180,9 +1323,18 @@ class GpuCompositor : FrameCompositor {
             uniform sampler2D uMaskTex;
             uniform sampler2D uImgTex;
             uniform int uFitMode;
+            uniform float uEdgeSmoothing;
 
             void main() {
-                float personAlpha = texture2D(uMaskTex, vMaskTex).r;
+                float rawAlpha = texture2D(uMaskTex, vMaskTex).r;
+                float personAlpha;
+                if (uEdgeSmoothing <= 0.0) {
+                    personAlpha = step(0.5, rawAlpha);
+                } else {
+                    float low = max(0.0, 0.5 - uEdgeSmoothing * 0.45);
+                    float high = min(1.0, 0.5 + uEdgeSmoothing * 0.45);
+                    personAlpha = smoothstep(low, high, rawAlpha);
+                }
                 vec4 original = texture2D(uCamTex, vCamTex);
                 vec4 bg;
                 if (uFitMode == 1 && (vImgTex.x < 0.0 || vImgTex.x > 1.0 || vImgTex.y < 0.0 || vImgTex.y > 1.0)) {
@@ -1203,6 +1355,7 @@ class GpuCompositor : FrameCompositor {
         im2dUMaskTex = GLES20.glGetUniformLocation(p, "uMaskTex")
         im2dUImgTex = GLES20.glGetUniformLocation(p, "uImgTex")
         im2dUFitMode = GLES20.glGetUniformLocation(p, "uFitMode")
+        im2dUEdgeSmoothing = GLES20.glGetUniformLocation(p, "uEdgeSmoothing")
     }
 
     private fun compileShader(type: Int, source: String): Int {
@@ -1249,6 +1402,14 @@ class GpuCompositor : FrameCompositor {
         if (outTexture != 0) {
             GLES20.glDeleteTextures(1, intArrayOf(outTexture), 0)
             outTexture = 0
+        }
+        if (readbackFbo != 0) {
+            GLES20.glDeleteFramebuffers(1, intArrayOf(readbackFbo), 0)
+            readbackFbo = 0
+        }
+        if (readbackTexture != 0) {
+            GLES20.glDeleteTextures(1, intArrayOf(readbackTexture), 0)
+            readbackTexture = 0
         }
         if (maskTextureId != 0) {
             GLES20.glDeleteTextures(1, intArrayOf(maskTextureId), 0)

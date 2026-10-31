@@ -120,6 +120,13 @@ class MiVirtualBackgroundKitPlugin :
                     context = appContext,
                     onStatusChange = { status -> updateStatus(status) },
                 )
+                val qualityMap = call.argument<Map<String, Any?>>("quality")
+                if (qualityMap != null) {
+                    val segW = (qualityMap["segmentationWidth"] as? Number)?.toInt() ?: 256
+                    val edgeSm = (qualityMap["edgeSmoothing"] as? Number)?.toFloat() ?: 0.5f
+                    val fps = (qualityMap["targetFps"] as? Number)?.toInt() ?: 30
+                    processor.setQuality(segW, edgeSm, fps)
+                }
                 val track = trackAttacher(trackId, processor)
                 if (track == null) {
                     updateStatus("error")
@@ -189,6 +196,13 @@ class MiVirtualBackgroundKitPlugin :
                     }
                     else -> result.notImplemented()
                 }
+            }
+            "setQuality" -> {
+                val segW = (call.argument<Number>("segmentationWidth"))?.toInt() ?: 256
+                val edgeSm = (call.argument<Number>("edgeSmoothing"))?.toFloat() ?: 0.5f
+                val fps = (call.argument<Number>("targetFps"))?.toInt() ?: 30
+                frameProcessor?.setQuality(segW, edgeSm, fps)
+                result.success(null)
             }
             "detach" -> {
                 val had = frameProcessor != null

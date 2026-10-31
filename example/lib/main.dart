@@ -39,6 +39,7 @@ class _SpikePageState extends State<SpikePage> {
   bool _prodAttached = false;
   String _activeEffectName = 'None';
   double _blurRadius = 20.0;
+  BackgroundQuality _quality = BackgroundQuality.balanced;
   bool _transformOn = true;
   bool _hideControls = false;
   Uint8List? _testImageBytes;
@@ -80,11 +81,11 @@ class _SpikePageState extends State<SpikePage> {
       if (mounted) setState(() => _isSupported = supported);
       setState(() => _status = 'track=${track.id}');
 
-      const prodMode = bool.fromEnvironment('PROD_ATTACH');
+      const prodMode = !bool.fromEnvironment('SPIKE_MODE');
       debugPrint('PROD_ATTACH=$prodMode');
       if (prodMode) {
-        // T3.2 / T3.3 verification mode: production processor with blur compositing.
-        await _kit.attach(track);
+        // Production processor with runtime background compositing.
+        await _kit.attach(track, quality: _quality);
         setState(() => _prodAttached = true);
         debugPrint('PROD attached track=${track.id}');
       } else {
@@ -163,6 +164,7 @@ class _SpikePageState extends State<SpikePage> {
   }
 
   Future<void> _updateHud() async {
+    if (!_spiked) return;
     final info = await _kit.spikeInfo();
     final n = (info['frames'] as int?) ?? 0;
     final gpu = Platform.isAndroid
@@ -230,7 +232,7 @@ class _SpikePageState extends State<SpikePage> {
       final tracks = _stream?.getVideoTracks();
       if (tracks == null || tracks.isEmpty) return;
       final track = tracks.first;
-      await _kit.attach(track);
+      await _kit.attach(track, quality: _quality);
       setState(() {
         _prodAttached = true;
         _spiked = false;
@@ -284,6 +286,14 @@ class _SpikePageState extends State<SpikePage> {
     setState(() => _blurRadius = radius);
     if (_activeEffectName.startsWith('Blur')) {
       await _applyBlur();
+    }
+  }
+
+  Future<void> _changeQuality(BackgroundQuality quality) async {
+    setState(() => _quality = quality);
+    if (_prodAttached) {
+      await _kit.setQuality(quality);
+      debugPrint('PROD quality: $quality');
     }
   }
 
@@ -393,6 +403,27 @@ class _SpikePageState extends State<SpikePage> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 4),
+            SegmentedButton<BackgroundQuality>(
+              segments: const [
+                ButtonSegment(
+                  value: BackgroundQuality.low,
+                  label: Text('Low (15fps)'),
+                ),
+                ButtonSegment(
+                  value: BackgroundQuality.balanced,
+                  label: Text('Balanced'),
+                ),
+                ButtonSegment(
+                  value: BackgroundQuality.high,
+                  label: Text('High'),
+                ),
+              ],
+              selected: {_quality},
+              onSelectionChanged: (set) {
+                if (set.isNotEmpty) _changeQuality(set.first);
+              },
             ),
           ] else
             ElevatedButton(

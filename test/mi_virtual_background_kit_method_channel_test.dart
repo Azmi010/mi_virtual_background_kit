@@ -48,6 +48,39 @@ void main() {
       expect(log.single.arguments, <String, Object?>{'trackId': 'track-9'});
     });
 
+    test('attach sends trackId and quality', () async {
+      mockHandler((_) async => null);
+      await platform.attach('track-9', quality: const <String, Object?>{
+        'segmentationWidth': 256,
+        'edgeSmoothing': 0.5,
+        'targetFps': 30,
+      });
+      expect(log.single.method, 'attach');
+      expect(log.single.arguments, <String, Object?>{
+        'trackId': 'track-9',
+        'quality': const <String, Object?>{
+          'segmentationWidth': 256,
+          'edgeSmoothing': 0.5,
+          'targetFps': 30,
+        },
+      });
+    });
+
+    test('setQuality sends quality map', () async {
+      mockHandler((_) async => null);
+      await platform.setQuality(const <String, Object?>{
+        'segmentationWidth': 512,
+        'edgeSmoothing': 1.0,
+        'targetFps': 60,
+      });
+      expect(log.single.method, 'setQuality');
+      expect(log.single.arguments, const <String, Object?>{
+        'segmentationWidth': 512,
+        'edgeSmoothing': 1.0,
+        'targetFps': 60,
+      });
+    });
+
     test('setEffect sends serialized map', () async {
       mockHandler((_) async => null);
       await platform.setEffect(<String, Object?>{

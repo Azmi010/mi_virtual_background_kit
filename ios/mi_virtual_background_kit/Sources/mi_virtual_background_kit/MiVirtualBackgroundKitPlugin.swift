@@ -20,7 +20,7 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
   internal var trackAttacher: ((String, ExternalVideoProcessingDelegate) -> Any?)?
   internal var trackDetacher: ((Any?, ExternalVideoProcessingDelegate?) -> Void)?
   internal var imageDecoder: ((String, Any?) -> UIImage?)?
-  internal var frameProcessorFactory: (((String) -> Void) -> FrameProcessor)?
+  internal var frameProcessorFactory: (() -> FrameProcessor)?
   internal var isSupportedChecker: (() -> Bool)?
 
   public static func register(with registrar: FlutterPluginRegistrar) {
@@ -195,11 +195,17 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
       // Re-attach replaces: never stack processors on one track (ADR 0001 §1).
       releaseFrameProcessor()
 
-      let processor = frameProcessorFactory?({ [weak self] status in
+      let processor = frameProcessorFactory?() ?? FrameProcessor()
+      processor.onStatusChange = { [weak self] status in
         self?.updateStatus(status)
-      }) ?? FrameProcessor(onStatusChange: { [weak self] status in
-        self?.updateStatus(status)
-      })
+      }
+
+      if let qualityMap = args["quality"] as? [String: Any] {
+        let segW = (qualityMap["segmentationWidth"] as? NSNumber)?.intValue ?? 256
+        let edgeSm = (qualityMap["edgeSmoothing"] as? NSNumber)?.floatValue ?? 0.5
+        let fps = (qualityMap["targetFps"] as? NSNumber)?.intValue ?? 30
+        processor.setQuality(segmentationWidth: segW, edgeSmoothing: edgeSm, targetFps: fps)
+      }
 
       guard let track = attachFrameProcessor(trackId: trackId, processor: processor) else {
         updateStatus("error")
@@ -271,6 +277,17 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
       default:
         result(FlutterMethodNotImplemented)
       }
+
+    case "setQuality":
+      guard let args = call.arguments as? [String: Any] else {
+        result(nil)
+        return
+      }
+      let segW = (args["segmentationWidth"] as? NSNumber)?.intValue ?? 256
+      let edgeSm = (args["edgeSmoothing"] as? NSNumber)?.floatValue ?? 0.5
+      let fps = (args["targetFps"] as? NSNumber)?.intValue ?? 30
+      frameProcessor?.setQuality(segmentationWidth: segW, edgeSmoothing: edgeSm, targetFps: fps)
+      result(nil)
 
     case "detach":
       let wasAttached = (frameProcessor != nil)

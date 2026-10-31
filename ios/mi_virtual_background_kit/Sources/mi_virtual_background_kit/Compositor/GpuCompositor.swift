@@ -8,6 +8,7 @@ import WebRTC
 /// Common interface for video frame compositors.
 public protocol FrameCompositor: AnyObject {
     var hasMask: Bool { get }
+    var edgeSmoothing: Float { get set }
     func uploadMask(_ mask: PersonMask)
     func uploadMask(_ mask: PersonMask, rotation: Int32)
     func clearMask()
@@ -15,6 +16,7 @@ public protocol FrameCompositor: AnyObject {
     func composeBlur(frame: RTCVideoFrame, radius: Float) -> RTCVideoFrame?
     func composeColor(frame: RTCVideoFrame, color: UInt32) -> RTCVideoFrame?
     func composeImage(frame: RTCVideoFrame, fit: String) -> RTCVideoFrame?
+    func reuseLastFrame(frame: RTCVideoFrame) -> RTCVideoFrame?
     func release()
 }
 
@@ -42,10 +44,21 @@ public class GpuCompositor: FrameCompositor {
     private var poolFormat: OSType = 0
     private let lock = NSLock()
 
+    public var edgeSmoothing: Float = 0.5
+    private var lastRenderedBuffer: CVPixelBuffer?
+
     public var hasMask: Bool {
         lock.lock()
         defer { lock.unlock() }
         return currentMaskImage != nil
+    }
+
+    public func reuseLastFrame(frame: RTCVideoFrame) -> RTCVideoFrame? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let lastBuf = lastRenderedBuffer else { return nil }
+        let outRtcBuffer = RTCCVPixelBuffer(pixelBuffer: lastBuf)
+        return RTCVideoFrame(buffer: outRtcBuffer, rotation: frame.rotation, timeStampNs: frame.timeStampNs)
     }
 
     public init() {
@@ -224,11 +237,44 @@ public class GpuCompositor: FrameCompositor {
             .transformed(by: CGAffineTransform(translationX: cameraImage.extent.origin.x, y: cameraImage.extent.origin.y))
         lock.unlock()
 
-        // Edge feathering: apply soft blur clamped to extent so borders never bleed into the body
-        let featheredMask = scaledMask
-            .clampedToExtent()
-            .applyingGaussianBlur(sigma: 1.5)
-            .cropped(to: cameraImage.extent)
+        // Edge feathering: apply soft blur with inward matte choke to eliminate white glow / halo bleed
+        let featheredMask: CIImage
+        if edgeSmoothing <= 0.0 {
+            featheredMask = scaledMask.cropped(to: cameraImage.extent)
+        } else {
+            // Tighter sigma (1.2x) avoids excessive blur width that captures room background lighting
+            let sigma = Double(edgeSmoothing * 1.2)
+            let blurred = scaledMask
+                .clampedToExtent()
+                .applyingGaussianBlur(sigma: sigma)
+                .cropped(to: cameraImage.extent)
+
+            // Inward matte choke: clips outer feathering to zero so real room background
+            // never bleeds as a bright white halo into the virtual background.
+            let blackPoint = CGFloat(edgeSmoothing * 0.18)
+            let slope = 1.0 / (1.0 - blackPoint)
+            let bias = -blackPoint * slope
+
+            if let matrixFilter = CIFilter(name: "CIColorMatrix") {
+                matrixFilter.setValue(blurred, forKey: kCIInputImageKey)
+                matrixFilter.setValue(CIVector(x: slope, y: 0, z: 0, w: 0), forKey: "inputRVector")
+                matrixFilter.setValue(CIVector(x: 0, y: slope, z: 0, w: 0), forKey: "inputGVector")
+                matrixFilter.setValue(CIVector(x: 0, y: 0, z: slope, w: 0), forKey: "inputBVector")
+                matrixFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 1), forKey: "inputAVector")
+                matrixFilter.setValue(CIVector(x: bias, y: bias, z: bias, w: 0), forKey: "inputBiasVector")
+                if let matrixOutput = matrixFilter.outputImage,
+                   let clampFilter = CIFilter(name: "CIColorClamp") {
+                    clampFilter.setValue(matrixOutput, forKey: kCIInputImageKey)
+                    clampFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputMinComponents")
+                    clampFilter.setValue(CIVector(x: 1, y: 1, z: 1, w: 1), forKey: "inputMaxComponents")
+                    featheredMask = clampFilter.outputImage?.cropped(to: cameraImage.extent) ?? blurred
+                } else {
+                    featheredMask = blurred
+                }
+            } else {
+                featheredMask = blurred
+            }
+        }
 
         guard let blendFilter = CIFilter(name: "CIBlendWithMask") else { return nil }
         blendFilter.setValue(cameraImage, forKey: kCIInputImageKey)
@@ -253,6 +299,10 @@ public class GpuCompositor: FrameCompositor {
             bounds: outputImage.extent,
             colorSpace: CGColorSpaceCreateDeviceRGB()
         )
+
+        lock.lock()
+        lastRenderedBuffer = outputBuffer
+        lock.unlock()
 
         let outRtcBuffer = RTCCVPixelBuffer(pixelBuffer: outputBuffer)
         return RTCVideoFrame(buffer: outRtcBuffer, rotation: frame.rotation, timeStampNs: frame.timeStampNs)
@@ -314,6 +364,7 @@ public class GpuCompositor: FrameCompositor {
         poolWidth = 0
         poolHeight = 0
         poolFormat = 0
+        lastRenderedBuffer = nil
         if let pool = bufferPool {
             CVPixelBufferPoolFlush(pool, .excessBuffers)
         }

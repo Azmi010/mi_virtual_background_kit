@@ -17,6 +17,7 @@ class MockPlatform
   bool supported = true;
   Object? attachError;
   bool throwOnAttachNoop = false;
+  Map<String, Object?>? lastQuality;
 
   @override
   Future<bool> isSupported() async {
@@ -25,10 +26,17 @@ class MockPlatform
   }
 
   @override
-  Future<void> attach(String trackId) async {
+  Future<void> attach(String trackId, {Map<String, Object?>? quality}) async {
     calls.add('attach:$trackId');
+    lastQuality = quality;
     final error = attachError;
     if (error != null) throw error;
+  }
+
+  @override
+  Future<void> setQuality(Map<String, Object?> quality) async {
+    calls.add('setQuality');
+    lastQuality = quality;
   }
 
   @override
@@ -187,6 +195,73 @@ void main() {
       await expectLater(
         kit.attach(FakeTrack('t')),
         throwsA(isA<UnsupportedPlatformException>()),
+      );
+    });
+
+    test('passes quality map to platform', () async {
+      const q = BackgroundQuality(
+        segmentationWidth: 320,
+        edgeSmoothing: 0.8,
+        targetFps: 25,
+      );
+      await kit.attach(FakeTrack('track-1'), quality: q);
+      expect(mock.lastQuality, equals(q.toMap()));
+    });
+
+    test('rejects invalid quality on attach', () async {
+      await expectLater(
+        kit.attach(
+          FakeTrack('track-1'),
+          quality: const BackgroundQuality(segmentationWidth: 0),
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      await expectLater(
+        kit.attach(
+          FakeTrack('track-1'),
+          quality: const BackgroundQuality(edgeSmoothing: -0.1),
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      await expectLater(
+        kit.attach(
+          FakeTrack('track-1'),
+          quality: const BackgroundQuality(edgeSmoothing: 1.5),
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      await expectLater(
+        kit.attach(
+          FakeTrack('track-1'),
+          quality: const BackgroundQuality(targetFps: 0),
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(mock.calls, isEmpty);
+    });
+  });
+
+  group('setQuality', () {
+    test('delegates to platform after validation', () async {
+      final q = BackgroundQuality.preset(BackgroundQualityPreset.high);
+      await kit.setQuality(q);
+      expect(mock.calls, contains('setQuality'));
+      expect(mock.lastQuality, equals(q.toMap()));
+    });
+
+    test('rejects invalid quality without touching platform', () async {
+      await expectLater(
+        kit.setQuality(const BackgroundQuality(segmentationWidth: -1)),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(mock.calls, isEmpty);
+    });
+
+    test('throws StateError when kit is disposed', () async {
+      await kit.dispose();
+      await expectLater(
+        kit.setQuality(const BackgroundQuality()),
+        throwsA(isA<StateError>()),
       );
     });
   });

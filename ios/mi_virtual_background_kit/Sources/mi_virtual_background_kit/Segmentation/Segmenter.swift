@@ -169,8 +169,8 @@ public class Segmenter: MaskSegmenter {
 
     /// Resolves the file system path for `selfie_segmenter.tflite` across SPM, CocoaPods, and app bundles.
     public static func resolveModelPath(customPath: String? = nil) -> String? {
-        if let customPath = customPath, FileManager.default.fileExists(atPath: customPath) {
-            return customPath
+        if let customPath = customPath {
+            return FileManager.default.fileExists(atPath: customPath) ? customPath : nil
         }
 
         #if SWIFT_PACKAGE
