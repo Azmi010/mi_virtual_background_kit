@@ -3,11 +3,14 @@ import UIKit
 import CoreVideo
 import CoreImage
 import MediaPipeTasksVision
+import WebRTC
 
 /// Common interface for person segmenters on iOS.
 public protocol MaskSegmenter: AnyObject {
     func segment(image: UIImage) throws -> PersonMask
     func segment(pixelBuffer: CVPixelBuffer) throws -> PersonMask
+    func segment(pixelBuffer: CVPixelBuffer, rotation: RTCVideoRotation) throws -> PersonMask
+    func segment(pixelBuffer: CVPixelBuffer, rotation: Int32) throws -> PersonMask
     func close()
 }
 
@@ -62,9 +65,9 @@ public class Segmenter: MaskSegmenter {
         return try processMpImage(mpImage, segmenter: segmenter)
     }
 
-    /// Segments a CVPixelBuffer into a PersonMask.
+    /// Segments a CVPixelBuffer into a PersonMask directly in camera buffer coordinates.
     /// Handles native BGRA buffers directly or converts YUV/other formats via CoreImage.
-    public func segment(pixelBuffer: CVPixelBuffer) throws -> PersonMask {
+    public func segment(pixelBuffer: CVPixelBuffer, rotation: Int32 = 0) throws -> PersonMask {
         lock.lock()
         defer { lock.unlock() }
 
@@ -93,7 +96,17 @@ public class Segmenter: MaskSegmenter {
             }
         }
 
-        return try processMpImage(mpImage, segmenter: segmenter)
+        let mask = try processMpImage(mpImage, segmenter: segmenter)
+        let rtcRot = RTCVideoRotation(rawValue: Int(rotation)) ?? ._0
+        return PersonMask(alpha: mask.alpha, width: mask.width, height: mask.height, rotation: rtcRot)
+    }
+
+    public func segment(pixelBuffer: CVPixelBuffer, rotation: RTCVideoRotation) throws -> PersonMask {
+        return try segment(pixelBuffer: pixelBuffer, rotation: Int32(rotation.rawValue))
+    }
+
+    public func segment(pixelBuffer: CVPixelBuffer) throws -> PersonMask {
+        return try segment(pixelBuffer: pixelBuffer, rotation: 0)
     }
 
     private func processMpImage(_ mpImage: MPImage, segmenter: ImageSegmenter) throws -> PersonMask {

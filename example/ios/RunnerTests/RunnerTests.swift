@@ -28,6 +28,7 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(processor.lastHeight, 0)
     XCTAssertEqual(processor.lastRotation, 0)
     XCTAssertEqual(processor.bufferType, "")
+    XCTAssertEqual(FrameProcessor.segmentEveryNFrames, 2)
 
     processor.release()
     XCTAssertEqual(processor.frameCount, 0)
@@ -97,6 +98,34 @@ class RunnerTests: XCTestCase {
 
     let mask = PersonMask(alpha: [255, 0, 0, 255], width: 2, height: 2)
     compositor.uploadMask(mask)
+    XCTAssertTrue(compositor.hasMask)
+
+    compositor.release()
+    XCTAssertFalse(compositor.hasMask)
+  }
+
+  func testPersonMaskWithRotation() {
+    let mask = PersonMask(alpha: [255, 0], width: 2, height: 1, rotation: ._90)
+    XCTAssertEqual(mask.rotation, ._90)
+    XCTAssertEqual(mask.width, 2)
+    XCTAssertEqual(mask.height, 1)
+    XCTAssertEqual(mask.personPixelCount, 1)
+  }
+
+  func testGpuCompositorUploadMaskWithRotations() {
+    let compositor = GpuCompositor()
+    let mask = PersonMask(alpha: [255, 0, 0, 255], width: 2, height: 2)
+
+    compositor.uploadMask(mask, rotation: 90)
+    XCTAssertTrue(compositor.hasMask)
+
+    compositor.uploadMask(mask, rotation: 180)
+    XCTAssertTrue(compositor.hasMask)
+
+    compositor.uploadMask(mask, rotation: 270)
+    XCTAssertTrue(compositor.hasMask)
+
+    compositor.uploadMask(mask, rotation: 0)
     XCTAssertTrue(compositor.hasMask)
 
     compositor.release()

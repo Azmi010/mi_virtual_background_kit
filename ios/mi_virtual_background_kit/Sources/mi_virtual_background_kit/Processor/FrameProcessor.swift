@@ -22,7 +22,8 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         case image(image: UIImage, fit: String)
     }
 
-    public static let segmentEveryNFrames = 5
+    /// Segmentation frequency: run on every available frame (~30 fps on iPhone 15, ~7ms inference) (T4.4).
+    public static let segmentEveryNFrames = 1
 
     private let lock = NSLock()
     private var frames: Int = 0
@@ -167,7 +168,7 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
 
         // 2. Trigger asynchronous segmentation if worker is idle
         if !compositor.hasMask || currentFrames % FrameProcessor.segmentEveryNFrames == 0 {
-            triggerSegmentation(pixelBuffer: pixelBuffer)
+            triggerSegmentation(pixelBuffer: pixelBuffer, rotation: frame.rotation)
         }
 
         // 3. Composite using latest available mask
@@ -191,7 +192,7 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         return frame
     }
 
-    private func triggerSegmentation(pixelBuffer: CVPixelBuffer) {
+    private func triggerSegmentation(pixelBuffer: CVPixelBuffer, rotation: RTCVideoRotation) {
         lock.lock()
         guard !isSegmenting, let seg = segmenter else {
             lock.unlock()
@@ -209,8 +210,8 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
             }
 
             do {
-                let mask = try seg.segment(pixelBuffer: pixelBuffer)
-                self.compositor.uploadMask(mask)
+                let mask = try seg.segment(pixelBuffer: pixelBuffer, rotation: rotation)
+                self.compositor.uploadMask(mask, rotation: Int32(rotation.rawValue))
             } catch {
                 NSLog("MiVBG segmentation error: \(error)")
             }
