@@ -35,7 +35,8 @@ class FrameProcessor(
     private val segmenterProvider: (() -> MaskSegmenter)? = null,
     private val compositorProvider: (() -> FrameCompositor)? = null,
     private val bitmapProvider: ((Int, Int) -> Bitmap)? = null,
-    private val onStatusChange: ((String) -> Unit)? = null,
+    var onStatusChange: ((String) -> Unit)? = null,
+    var onFallbackEvent: ((Map<String, Any?>) -> Unit)? = null,
 ) : LocalVideoTrack.ExternalVideoFrameProcessing {
 
     private val frames = AtomicInteger(0)
@@ -102,7 +103,20 @@ class FrameProcessor(
     var targetFps: Int = 30
         private set
 
+    @Volatile
+    var adaptiveSegmentInterval: Int = 3
+        internal set
+
+    @Volatile
+    var isFallbackDisabled: Boolean = false
+        internal set
+
     private var lastCompositedTimestampNs: Long = 0L
+
+    // Performance window tracking (FR-12)
+    private var windowStartTimestampNs: Long = 0L
+    private var windowFrameCount: Int = 0
+    private var lowFpsWindowCount: Int = 0
 
     /** Sets quality parameters controlling segmentation resolution, smoothing, and fps. */
     fun setQuality(segmentationWidth: Int, edgeSmoothing: Float, targetFps: Int) {
@@ -114,18 +128,21 @@ class FrameProcessor(
 
     /** Sets the blur effect with the given [radius] (in range (0, 100]). */
     fun setBlurEffect(radius: Float) {
+        isFallbackDisabled = false
         currentEffect = EffectState.Blur(radius)
         ensureSegmenter()
     }
 
     /** Sets the solid color background effect with [color] (32-bit ARGB). */
     fun setColorEffect(color: Int) {
+        isFallbackDisabled = false
         currentEffect = EffectState.Color(color)
         ensureSegmenter()
     }
 
     /** Sets the background image effect with [bitmap] and [fit] ("cover" or "contain"). */
     fun setImageEffect(bitmap: Bitmap, fit: String) {
+        isFallbackDisabled = false
         pendingImageBitmap = bitmap
         currentEffect = EffectState.Image(bitmap, fit)
         ensureSegmenter()
@@ -137,6 +154,9 @@ class FrameProcessor(
         pendingMask = null
         pendingImageBitmap = null
         lastCompositedTimestampNs = 0L
+        windowStartTimestampNs = 0L
+        windowFrameCount = 0
+        lowFpsWindowCount = 0
         compositor.clearMask()
     }
 
@@ -178,6 +198,24 @@ class FrameProcessor(
         val buffer = frame.buffer as? VideoFrame.TextureBuffer ?: return frame
 
         val currentTimestamp = if (frame.timestampNs > 0) frame.timestampNs else System.nanoTime()
+
+        // FR-12: Monitor frame rate across sliding window and evaluate performance fallback
+        if (windowStartTimestampNs == 0L) {
+            windowStartTimestampNs = currentTimestamp
+            windowFrameCount = 0
+        } else {
+            windowFrameCount++
+            if (windowFrameCount >= FPS_MONITOR_WINDOW_FRAMES) {
+                val elapsedSec = (currentTimestamp - windowStartTimestampNs) / 1_000_000_000.0
+                if (elapsedSec > 0.0) {
+                    val measuredFps = windowFrameCount / elapsedSec
+                    evaluatePerformance(measuredFps)
+                }
+                windowStartTimestampNs = currentTimestamp
+                windowFrameCount = 0
+            }
+        }
+
         if (targetFps < 30 && lastCompositedTimestampNs > 0L) {
             val elapsed = currentTimestamp - lastCompositedTimestampNs
             val minIntervalNs = 1_000_000_000L / targetFps
@@ -211,8 +249,9 @@ class FrameProcessor(
             }
         }
 
-        // 3. Schedule segmentation every SEGMENT_EVERY_N_FRAMES (or immediately on first frame) if worker is idle
-        if ((!compositor.hasMask || n % SEGMENT_EVERY_N_FRAMES == 0) && isSegmenting.compareAndSet(false, true)) {
+        // 3. Schedule segmentation adaptively (or immediately on first frame) if worker is idle
+        val interval = adaptiveSegmentInterval
+        if ((!compositor.hasMask || n % interval == 0) && isSegmenting.compareAndSet(false, true)) {
             val seg = segmenter
             if (seg != null) {
                 val rgbaBytes = try {
@@ -253,7 +292,19 @@ class FrameProcessor(
                             } catch (_: Throwable) {
                                 // Safe fallback in tests without native pixel backing
                             }
+                            val startInferenceNs = System.nanoTime()
                             val resultMask = seg.segment(bmp)
+                            val inferenceMs = (System.nanoTime() - startInferenceNs) / 1_000_000
+
+                            // Adaptively update interval: fast hardware tracks at ~15 Hz, slower at ~6 or ~3 Hz
+                            adaptiveSegmentInterval = when {
+                                inferenceMs < 25 -> 2
+                                inferenceMs <= 50 -> 3
+                                inferenceMs <= 85 -> 5
+                                inferenceMs <= 150 -> 8
+                                else -> 10
+                            }
+
                             val maskSize = resultMask.width * resultMask.height
                             val targetBuf = if (useMaskBufferA) {
                                 if (maskBufferA == null || maskBufferA!!.size != maskSize) {
@@ -339,6 +390,48 @@ class FrameProcessor(
         }
     }
 
+    internal fun evaluatePerformance(measuredFps: Double) {
+        if (currentEffect == null || isReleased.get()) return
+
+        if (measuredFps < DEGRADE_FPS_THRESHOLD) {
+            lowFpsWindowCount++
+            if (segmentationWidth > 192) {
+                val oldWidth = segmentationWidth
+                segmentationWidth = 192
+                adaptiveSegmentInterval = (adaptiveSegmentInterval + 2).coerceAtMost(MAX_SEGMENT_INTERVAL)
+                Log.w(TAG, "Performance drop detected: fps=$measuredFps < $DEGRADE_FPS_THRESHOLD. Degraded resolution $oldWidth -> 192")
+                onFallbackEvent?.invoke(
+                    mapOf(
+                        "event" to "fallback",
+                        "action" to "qualityDegraded",
+                        "reason" to "fps_drop_${String.format(java.util.Locale.US, "%.1f", measuredFps)}",
+                        "segmentationWidth" to 192,
+                        "targetFps" to targetFps,
+                    )
+                )
+            } else if (measuredFps < CRITICAL_LOW_FPS && lowFpsWindowCount >= 2) {
+                isFallbackDisabled = true
+                clearEffect()
+                Log.e(TAG, "Critical performance drop: fps=$measuredFps < $CRITICAL_LOW_FPS. Auto-disabled effect.")
+                onStatusChange?.invoke("idle")
+                onFallbackEvent?.invoke(
+                    mapOf(
+                        "event" to "fallback",
+                        "action" to "disabled",
+                        "reason" to "fps_critical_${String.format(java.util.Locale.US, "%.1f", measuredFps)}",
+                    )
+                )
+            }
+        } else {
+            lowFpsWindowCount = 0
+        }
+    }
+
+    /** Allows simulating a performance drop directly for unit testing (FR-12). */
+    internal fun simulatePerformanceDrop(measuredFps: Double) {
+        evaluatePerformance(measuredFps)
+    }
+
     companion object {
         private const val TAG = "MiVBG"
 
@@ -347,6 +440,11 @@ class FrameProcessor(
          * Decision recorded in Phase 5 / T3.3.
          */
         const val SEGMENT_EVERY_N_FRAMES = 5
+        const val MIN_SEGMENT_INTERVAL = 2
+        const val MAX_SEGMENT_INTERVAL = 10
+        const val FPS_MONITOR_WINDOW_FRAMES = 45
+        const val DEGRADE_FPS_THRESHOLD = 14
+        const val CRITICAL_LOW_FPS = 10
     }
 }
 

@@ -4,10 +4,12 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import 'mi_virtual_background_kit_platform_interface.dart';
 import 'src/effects/effects.dart';
+import 'src/fallback/fallback.dart';
 import 'src/quality/quality.dart';
 import 'src/status/status.dart';
 
 export 'src/effects/effects.dart';
+export 'src/fallback/fallback.dart';
 export 'src/quality/quality.dart';
 export 'src/status/status.dart';
 
@@ -29,6 +31,13 @@ class MiVirtualBackgroundKit {
 
   /// Processor status: idle, initializing, active, error.
   Stream<ProcessorStatus> get statusStream => _platform.statusStream;
+
+  /// Stream of automatic performance fallback events (FR-12).
+  ///
+  /// Emits when the native engine automatically downgrades quality or disables
+  /// effects due to sustained frame rate drops on low-end or constrained hardware.
+  Stream<PerformanceFallbackEvent> get fallbackStream =>
+      _platform.fallbackStream;
 
   /// Attaches the processor to a local camera [track] with optional [quality] settings.
   ///

@@ -53,6 +53,13 @@ class MiVirtualBackgroundKitPlugin :
         }
     }
 
+    internal fun sendFallbackEvent(event: Map<String, Any?>) {
+        val sink = statusSink ?: return
+        runOnMainThread {
+            sink.success(event)
+        }
+    }
+
     private var spikeProcessor: SpikeFrameProcessor? = null
 
     // Production processor (T3.2). ADR 0001 §1: the LocalVideoTrack object
@@ -75,6 +82,8 @@ class MiVirtualBackgroundKitPlugin :
     internal var trackDetacher: (Any?, FrameProcessor?) -> Unit = { track, processor ->
         detachFrameProcessor(track as? com.cloudwebrtc.webrtc.video.LocalVideoTrack, processor)
     }
+
+    internal var frameProcessorFactory: (() -> FrameProcessor)? = null
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         appContext = flutterPluginBinding.applicationContext
@@ -116,10 +125,13 @@ class MiVirtualBackgroundKitPlugin :
                 updateStatus("initializing")
                 // Re-attach replaces: never stack processors on one track.
                 releaseFrameProcessor()
-                val processor = FrameProcessor(
+                val processor = frameProcessorFactory?.invoke() ?: FrameProcessor(
                     context = appContext,
                     onStatusChange = { status -> updateStatus(status) },
+                    onFallbackEvent = { eventMap -> sendFallbackEvent(eventMap) },
                 )
+                processor.onStatusChange = { status -> updateStatus(status) }
+                processor.onFallbackEvent = { eventMap -> sendFallbackEvent(eventMap) }
                 val qualityMap = call.argument<Map<String, Any?>>("quality")
                 if (qualityMap != null) {
                     val segW = (qualityMap["segmentationWidth"] as? Number)?.toInt() ?: 256

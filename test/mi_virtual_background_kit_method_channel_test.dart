@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mi_virtual_background_kit/mi_virtual_background_kit_method_channel.dart';
+import 'package:mi_virtual_background_kit/src/fallback/fallback.dart';
 import 'package:mi_virtual_background_kit/src/status/status.dart';
 
 void main() {
@@ -180,6 +181,37 @@ void main() {
         ProcessorStatus.idle,
         ProcessorStatus.idle,
       ]);
+    });
+
+    test('fallbackStream maps event payload to PerformanceFallbackEvent', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockStreamHandler(
+        platform.eventChannel,
+        MockStreamHandler.inline(
+          onListen: (Object? arguments, MockStreamHandlerEventSink events) {
+            events
+              ..success({
+                'event': 'fallback',
+                'action': 'qualityDegraded',
+                'reason': 'fps_drop_11',
+                'segmentationWidth': 192,
+                'targetFps': 15,
+              })
+              ..success({
+                'event': 'fallback',
+                'action': 'disabled',
+                'reason': 'fps_critical_6',
+              })
+              ..endOfStream();
+          },
+        ),
+      );
+
+      final fallbackEvents = await platform.fallbackStream.toList();
+      expect(fallbackEvents.length, 2);
+      expect(fallbackEvents[0].action, FallbackAction.qualityDegraded);
+      expect(fallbackEvents[0].segmentationWidth, 192);
+      expect(fallbackEvents[1].action, FallbackAction.disabled);
     });
   });
 

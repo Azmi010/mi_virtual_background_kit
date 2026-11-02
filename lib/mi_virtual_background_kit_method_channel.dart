@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'mi_virtual_background_kit_platform_interface.dart';
+import 'src/fallback/fallback.dart';
 import 'src/status/status.dart';
 
 /// An implementation of [MiVirtualBackgroundKitPlatform] that uses method channels.
@@ -62,7 +63,18 @@ class MethodChannelMiVirtualBackgroundKit
 
   @override
   Stream<ProcessorStatus> get statusStream {
-    return eventChannel.receiveBroadcastStream().map(_statusFromEvent);
+    return eventChannel
+        .receiveBroadcastStream()
+        .where((event) => event is String)
+        .map(_statusFromEvent);
+  }
+
+  @override
+  Stream<PerformanceFallbackEvent> get fallbackStream {
+    return eventChannel
+        .receiveBroadcastStream()
+        .where((event) => event is Map)
+        .map((event) => PerformanceFallbackEvent.fromMap(event as Map));
   }
 
   ProcessorStatus _statusFromEvent(dynamic event) {

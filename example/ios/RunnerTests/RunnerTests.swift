@@ -231,6 +231,34 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(events.count, 5)
   }
 
+  func testMiVirtualBackgroundKitPlugin_sendFallbackEvent_deliversPayloadToSink() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    var receivedPayload: [String: Any]? = nil
+
+    let err = plugin.onListen(withArguments: nil) { event in
+      if let map = event as? [String: Any] {
+        receivedPayload = map
+      }
+    }
+    XCTAssertNil(err)
+
+    let testEvent: [String: Any] = [
+      "event": "fallback",
+      "action": "qualityDegraded",
+      "reason": "fps_drop_12.0",
+      "segmentationWidth": 192,
+      "targetFps": 30
+    ]
+    plugin.sendFallbackEvent(testEvent)
+
+    XCTAssertNotNil(receivedPayload)
+    XCTAssertEqual(receivedPayload?["event"] as? String, "fallback")
+    XCTAssertEqual(receivedPayload?["action"] as? String, "qualityDegraded")
+    XCTAssertEqual(receivedPayload?["reason"] as? String, "fps_drop_12.0")
+    XCTAssertEqual(receivedPayload?["segmentationWidth"] as? Int, 192)
+    XCTAssertEqual(receivedPayload?["targetFps"] as? Int, 30)
+  }
+
   func testAttachAndDetachLifecycle() {
     let plugin = MiVirtualBackgroundKitPlugin()
     var statuses: [String] = []
@@ -1067,5 +1095,88 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(mockCompositor.reuseLastFrameCalls, 1)
 
     processor.release()
+  }
+
+  func testPerformanceFallback_stage1_degradesResolutionWhenFpsDrops() throws {
+    let mockSegmenter = MockSegmenter()
+    let mockCompositor = MockCompositor()
+    var fallbackEvent: [String: Any]? = nil
+
+    let processor = FrameProcessor(
+      compositor: mockCompositor,
+      segmenterProvider: { mockSegmenter },
+      onFallbackEvent: { event in fallbackEvent = event }
+    )
+    processor.setQuality(segmentationWidth: 256, edgeSmoothing: 0.5, targetFps: 30)
+    try processor.setBlurEffect(radius: 10.0)
+
+    // Measured FPS dropped to 12.0 (< 14.0 threshold)
+    processor.simulatePerformanceDrop(12.0)
+
+    // Stage 1: resolution drops from 256 to 192, and interval increases
+    XCTAssertEqual(processor.segmentationWidth, 192)
+    XCTAssertGreaterThanOrEqual(processor.adaptiveSegmentInterval, 3)
+    XCTAssertNotNil(fallbackEvent)
+    XCTAssertEqual(fallbackEvent?["action"] as? String, "qualityDegraded")
+    XCTAssertEqual(fallbackEvent?["segmentationWidth"] as? Int, 192)
+    XCTAssertFalse(processor.isFallbackDisabled)
+    XCTAssertNotNil(processor.currentEffect)
+
+    processor.release()
+  }
+
+  func testPerformanceFallback_stage2_disablesEffectWhenFpsCriticallyLow() throws {
+    let mockSegmenter = MockSegmenter()
+    let mockCompositor = MockCompositor()
+    var fallbackEvent: [String: Any]? = nil
+    var lastStatus: String? = nil
+
+    let processor = FrameProcessor(
+      compositor: mockCompositor,
+      segmenterProvider: { mockSegmenter },
+      onStatusChange: { status in lastStatus = status },
+      onFallbackEvent: { event in fallbackEvent = event }
+    )
+    processor.setQuality(segmentationWidth: 192, edgeSmoothing: 0.5, targetFps: 30)
+    try processor.setBlurEffect(radius: 10.0)
+
+    // First critical drop (< 10.0 fps): not disabled yet (requires 2 consecutive windows)
+    processor.simulatePerformanceDrop(8.0)
+    XCTAssertFalse(processor.isFallbackDisabled)
+    XCTAssertNotNil(processor.currentEffect)
+
+    // Second consecutive critical drop: triggers Stage 2 disable
+    processor.simulatePerformanceDrop(7.5)
+    XCTAssertTrue(processor.isFallbackDisabled)
+    XCTAssertNil(processor.currentEffect)
+    XCTAssertEqual(lastStatus, "idle")
+    XCTAssertNotNil(fallbackEvent)
+    XCTAssertEqual(fallbackEvent?["action"] as? String, "disabled")
+    XCTAssertTrue((fallbackEvent?["reason"] as? String)?.contains("fps_critical") ?? false)
+
+    processor.release()
+  }
+
+  func testPluginFallbackEvent_forwardedToEventChannel() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    var fallbackEvents: [[String: Any]] = []
+
+    _ = plugin.onListen(withArguments: nil) { event in
+      if let map = event as? [String: Any] {
+        fallbackEvents.append(map)
+      }
+    }
+
+    let payload: [String: Any] = [
+      "event": "fallback",
+      "action": "qualityDegraded",
+      "reason": "fps_drop_11.5",
+      "segmentationWidth": 192
+    ]
+    plugin.sendFallbackEvent(payload)
+
+    XCTAssertEqual(fallbackEvents.count, 1)
+    XCTAssertEqual(fallbackEvents.first?["action"] as? String, "qualityDegraded")
+    XCTAssertEqual(fallbackEvents.first?["segmentationWidth"] as? Int, 192)
   }
 }

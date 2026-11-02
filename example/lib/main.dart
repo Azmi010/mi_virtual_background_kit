@@ -49,8 +49,10 @@ class _SpikePageState extends State<SpikePage> {
   String _gpuType = '';
   Timer? _timer;
   StreamSubscription<ProcessorStatus>? _statusSubscription;
+  StreamSubscription<PerformanceFallbackEvent>? _fallbackSubscription;
   ProcessorStatus _processorStatus = ProcessorStatus.idle;
   bool _isSupported = false;
+  String? _lastFallbackMessage;
 
   @override
   void initState() {
@@ -59,6 +61,29 @@ class _SpikePageState extends State<SpikePage> {
     _statusSubscription = _kit.statusStream.listen((status) {
       debugPrint('KIT STATUS: $status');
       if (mounted) setState(() => _processorStatus = status);
+    });
+    _fallbackSubscription = _kit.fallbackStream.listen((event) {
+      debugPrint('KIT FALLBACK: $event');
+      if (mounted) {
+        setState(() {
+          _lastFallbackMessage =
+              '${event.action == FallbackAction.qualityDegraded ? "Degraded" : "Disabled"} (${event.reason})';
+          if (event.action == FallbackAction.disabled) {
+            _activeEffectName = 'None (Auto-disabled)';
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '⚠️ Fallback: ${event.action.name} (${event.reason})',
+            ),
+            duration: const Duration(seconds: 4),
+            backgroundColor: event.action == FallbackAction.disabled
+                ? Colors.redAccent
+                : Colors.orangeAccent,
+          ),
+        );
+      }
     });
     _start();
   }
@@ -164,14 +189,14 @@ class _SpikePageState extends State<SpikePage> {
   }
 
   Future<void> _updateHud() async {
-    if (!_spiked) return;
+    if (!_spiked && !_prodAttached) return;
     final info = await _kit.spikeInfo();
     final n = (info['frames'] as int?) ?? 0;
-    final gpu = Platform.isAndroid
+    final gpu = (Platform.isAndroid && _spiked)
         ? await _kit.spikeGpuInfo()
         : <dynamic, dynamic>{};
     setState(() {
-      _fps = n - _lastCount;
+      _fps = _lastCount > 0 ? (n - _lastCount).clamp(0, 120) : n;
       _lastCount = n;
       _frames = n;
       _gpuMicros = (gpu['compositeMicros'] as int?) ?? 0;
@@ -179,7 +204,7 @@ class _SpikePageState extends State<SpikePage> {
       _gpuType = (gpu['inputType'] as String?) ?? '';
     });
     debugPrint(
-      'SPIKE frames=$n fps=$_fps buffer=${info['bufferType']} '
+      'HUD frames=$n fps=$_fps buffer=${info['bufferType']} '
       'rot=${info['rotation']} size=${info['width']}x${info['height']} '
       'gpu=${_gpuMicros}us count=$_gpuCount type=$_gpuType',
     );
@@ -250,6 +275,7 @@ class _SpikePageState extends State<SpikePage> {
       setState(() {
         _prodAttached = false;
         _activeEffectName = 'None';
+        _fps = 0;
       });
       debugPrint('PROD detached');
     } catch (e) {
@@ -259,26 +285,38 @@ class _SpikePageState extends State<SpikePage> {
 
   Future<void> _applyNone() async {
     await _kit.setEffect(const NoEffect());
-    setState(() => _activeEffectName = 'None');
+    setState(() {
+      _activeEffectName = 'None';
+      _lastFallbackMessage = null;
+    });
     debugPrint('PROD effect: None');
   }
 
   Future<void> _applyBlur() async {
     await _kit.setEffect(BlurEffect(radius: _blurRadius));
-    setState(() => _activeEffectName = 'Blur (${_blurRadius.toInt()})');
+    setState(() {
+      _activeEffectName = 'Blur (${_blurRadius.toInt()})';
+      _lastFallbackMessage = null;
+    });
     debugPrint('PROD effect: Blur radius=$_blurRadius');
   }
 
   Future<void> _applyColor(Color color, String name) async {
     await _kit.setEffect(ColorEffect(color));
-    setState(() => _activeEffectName = 'Color ($name)');
+    setState(() {
+      _activeEffectName = 'Color ($name)';
+      _lastFallbackMessage = null;
+    });
     debugPrint('PROD effect: Color $name');
   }
 
   Future<void> _applyImage(BackgroundFit fit) async {
     final bytes = await _ensureTestPatternImage();
     await _kit.setEffect(ImageEffect.bytes(bytes, fit: fit));
-    setState(() => _activeEffectName = 'Image (${fit.name})');
+    setState(() {
+      _activeEffectName = 'Image (${fit.name})';
+      _lastFallbackMessage = null;
+    });
     debugPrint('PROD effect: Image fit=${fit.name}');
   }
 
@@ -307,6 +345,7 @@ class _SpikePageState extends State<SpikePage> {
   @override
   void dispose() {
     _statusSubscription?.cancel();
+    _fallbackSubscription?.cancel();
     _timer?.cancel();
     _renderer.dispose();
     super.dispose();
@@ -330,6 +369,18 @@ class _SpikePageState extends State<SpikePage> {
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
           ),
+          if (_lastFallbackMessage != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              '⚠️ Fallback: $_lastFallbackMessage',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Colors.deepOrange,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
           if (!_prodAttached) ...[
             Text(
               'gpu: ${_gpuMicros}us  n=$_gpuCount  type=$_gpuType',

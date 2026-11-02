@@ -54,6 +54,16 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
     }
   }
 
+  internal func sendFallbackEvent(_ event: [String: Any]) {
+    if Thread.isMainThread {
+      self.eventSink?(event)
+    } else {
+      DispatchQueue.main.async { [weak self] in
+        self?.eventSink?(event)
+      }
+    }
+  }
+
   /// Attaches [processor] to [LocalVideoTrack] via flutter_webrtc plugin singleton.
   /// Caches the track reference directly per ADR 0001 §1.
   private func attachFrameProcessor(trackId: String, processor: ExternalVideoProcessingDelegate) -> Any? {
@@ -198,6 +208,9 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
       let processor = frameProcessorFactory?() ?? FrameProcessor()
       processor.onStatusChange = { [weak self] status in
         self?.updateStatus(status)
+      }
+      processor.onFallbackEvent = { [weak self] event in
+        self?.sendFallbackEvent(event)
       }
 
       if let qualityMap = args["quality"] as? [String: Any] {

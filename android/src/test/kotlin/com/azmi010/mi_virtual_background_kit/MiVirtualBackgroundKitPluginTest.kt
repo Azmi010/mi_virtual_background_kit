@@ -275,4 +275,21 @@ internal class MiVirtualBackgroundKitPluginTest {
         plugin.onMethodCall(qualityCall, qualityResult)
         Mockito.verify(qualityResult).success(null)
     }
+
+    @Test
+    fun sendFallbackEvent_deliversPayloadToSink() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+        val mockSink = Mockito.mock(EventChannel.EventSink::class.java)
+        plugin.statusSink = mockSink
+
+        val fallbackMap = mapOf(
+            "event" to "fallback",
+            "action" to "qualityDegraded",
+            "reason" to "fps_drop_11.5",
+            "segmentationWidth" to 192,
+        )
+        plugin.sendFallbackEvent(fallbackMap)
+
+        Mockito.verify(mockSink).success(fallbackMap)
+    }
 }

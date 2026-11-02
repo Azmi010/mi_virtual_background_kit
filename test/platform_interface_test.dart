@@ -29,6 +29,7 @@ void main() {
       expectUnimplemented(() => platform.detach());
       expectUnimplemented(() => platform.dispose());
       expect(() => platform.statusStream, throwsUnimplementedError);
+      expect(() => platform.fallbackStream, throwsUnimplementedError);
       expectUnimplemented(() => platform.getPlatformVersion());
     });
 

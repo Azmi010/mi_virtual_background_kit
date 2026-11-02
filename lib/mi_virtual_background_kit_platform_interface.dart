@@ -1,6 +1,7 @@
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'mi_virtual_background_kit_method_channel.dart';
+import 'src/fallback/fallback.dart';
 import 'src/status/status.dart';
 
 abstract class MiVirtualBackgroundKitPlatform extends PlatformInterface {
@@ -64,6 +65,11 @@ abstract class MiVirtualBackgroundKitPlatform extends PlatformInterface {
   /// Status updates from the native processor.
   Stream<ProcessorStatus> get statusStream {
     throw UnimplementedError('statusStream has not been implemented.');
+  }
+
+  /// Stream of automatic performance fallback events (FR-12).
+  Stream<PerformanceFallbackEvent> get fallbackStream {
+    throw UnimplementedError('fallbackStream has not been implemented.');
   }
 
   // --- Spike T0.4 (temporary) ---

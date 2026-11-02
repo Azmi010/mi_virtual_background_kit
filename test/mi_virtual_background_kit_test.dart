@@ -13,6 +13,8 @@ class MockPlatform
   final List<String> calls = <String>[];
   final List<Map<String, Object?>> effects = <Map<String, Object?>>[];
   final statusController = StreamController<ProcessorStatus>.broadcast();
+  final fallbackController =
+      StreamController<PerformanceFallbackEvent>.broadcast();
 
   bool supported = true;
   Object? attachError;
@@ -57,6 +59,10 @@ class MockPlatform
 
   @override
   Stream<ProcessorStatus> get statusStream => statusController.stream;
+
+  @override
+  Stream<PerformanceFallbackEvent> get fallbackStream =>
+      fallbackController.stream;
 
   // Unused spike API.
   @override
@@ -155,6 +161,7 @@ void main() {
 
   tearDown(() {
     mock.statusController.close();
+    mock.fallbackController.close();
   });
 
   group('isSupported', () {
@@ -403,6 +410,22 @@ void main() {
         ProcessorStatus.initializing,
         ProcessorStatus.active,
       ]);
+      await sub.cancel();
+    });
+  });
+
+  group('fallbackStream', () {
+    test('delegates to platform stream', () async {
+      final events = <PerformanceFallbackEvent>[];
+      final sub = kit.fallbackStream.listen(events.add);
+      const sample = PerformanceFallbackEvent(
+        action: FallbackAction.qualityDegraded,
+        reason: 'fps_low',
+        segmentationWidth: 192,
+      );
+      mock.fallbackController.add(sample);
+      await Future<void>.delayed(Duration.zero);
+      expect(events, [sample]);
       await sub.cancel();
     });
   });

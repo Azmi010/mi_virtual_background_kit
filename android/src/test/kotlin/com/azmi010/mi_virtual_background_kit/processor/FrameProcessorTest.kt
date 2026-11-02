@@ -9,6 +9,7 @@ import org.mockito.Mockito
 import org.webrtc.VideoFrame
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -566,6 +567,68 @@ internal class FrameProcessorTest {
         processor.onFrame(f3)
         assertEquals(2, fakeCompositor.composeBlurCalls)
         assertEquals(1, fakeCompositor.reuseLastFrameCalls)
+
+        processor.release()
+    }
+
+    @Test
+    fun performanceFallback_stage1_degradesResolutionWhenFpsDrops() {
+        val fakeSegmenter = FakeSegmenter()
+        val fakeCompositor = FakeCompositor()
+        var fallbackMap: Map<String, Any?>? = null
+
+        val processor = FrameProcessor(
+            segmenterProvider = { fakeSegmenter },
+            compositorProvider = { fakeCompositor },
+            onFallbackEvent = { event -> fallbackMap = event },
+        )
+        processor.setQuality(256, 0.5f, 30)
+        processor.setBlurEffect(10.0f)
+
+        // Measured FPS dropped to 12.0 (< 14.0 threshold)
+        processor.simulatePerformanceDrop(12.0)
+
+        // Stage 1: resolution drops from 256 to 192, and interval increases
+        assertEquals(192, processor.segmentationWidth)
+        assertTrue(processor.adaptiveSegmentInterval >= 5)
+        assertNotNull(fallbackMap)
+        assertEquals("qualityDegraded", fallbackMap!!["action"])
+        assertEquals(192, fallbackMap!!["segmentationWidth"])
+        assertFalse(processor.isFallbackDisabled)
+        assertNotNull(processor.currentEffect)
+
+        processor.release()
+    }
+
+    @Test
+    fun performanceFallback_stage2_disablesEffectWhenFpsCriticallyLow() {
+        val fakeSegmenter = FakeSegmenter()
+        val fakeCompositor = FakeCompositor()
+        var fallbackMap: Map<String, Any?>? = null
+        var lastStatus: String? = null
+
+        val processor = FrameProcessor(
+            segmenterProvider = { fakeSegmenter },
+            compositorProvider = { fakeCompositor },
+            onStatusChange = { status -> lastStatus = status },
+            onFallbackEvent = { event -> fallbackMap = event },
+        )
+        processor.setQuality(192, 0.5f, 30)
+        processor.setBlurEffect(10.0f)
+
+        // First window at critical FPS (< 10)
+        processor.simulatePerformanceDrop(8.0)
+        assertNotNull(processor.currentEffect) // Not yet disabled on 1st window
+
+        // Second consecutive window at critical FPS
+        processor.simulatePerformanceDrop(7.5)
+
+        // Stage 2: Effect is disabled and reverted to bypass
+        assertNull(processor.currentEffect)
+        assertTrue(processor.isFallbackDisabled)
+        assertEquals("idle", lastStatus)
+        assertNotNull(fallbackMap)
+        assertEquals("disabled", fallbackMap!!["action"])
 
         processor.release()
     }
