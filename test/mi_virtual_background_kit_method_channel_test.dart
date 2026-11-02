@@ -213,6 +213,42 @@ void main() {
       expect(fallbackEvents[0].segmentationWidth, 192);
       expect(fallbackEvents[1].action, FallbackAction.disabled);
     });
+
+    test('concurrent statusStream and fallbackStream both receive events', () async {
+      final customPlatform = MethodChannelMiVirtualBackgroundKit();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockStreamHandler(
+        customPlatform.eventChannel,
+        MockStreamHandler.inline(
+          onListen: (Object? arguments, MockStreamHandlerEventSink events) {
+            events
+              ..success('active')
+              ..success({
+                'event': 'fallback',
+                'action': 'qualityDegraded',
+                'reason': 'fps_drop_12',
+                'segmentationWidth': 192,
+              })
+              ..success('idle')
+              ..endOfStream();
+          },
+        ),
+      );
+
+      final statusEvents = <ProcessorStatus>[];
+      final fallbackEvents = <PerformanceFallbackEvent>[];
+
+      final sub1 = customPlatform.statusStream.listen(statusEvents.add);
+      final sub2 = customPlatform.fallbackStream.listen(fallbackEvents.add);
+
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      await sub1.cancel();
+      await sub2.cancel();
+
+      expect(statusEvents, [ProcessorStatus.active, ProcessorStatus.idle]);
+      expect(fallbackEvents.length, 1);
+      expect(fallbackEvents[0].action, FallbackAction.qualityDegraded);
+    });
   });
 
   group('spike methods (temporary)', () {

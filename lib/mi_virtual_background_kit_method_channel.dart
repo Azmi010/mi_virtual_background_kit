@@ -61,18 +61,21 @@ class MethodChannelMiVirtualBackgroundKit
     await _guard(() => methodChannel.invokeMethod<void>('dispose'));
   }
 
+  Stream<dynamic>? _rawBroadcastStream;
+
+  Stream<dynamic> get _broadcastStream =>
+      _rawBroadcastStream ??= eventChannel.receiveBroadcastStream();
+
   @override
   Stream<ProcessorStatus> get statusStream {
-    return eventChannel
-        .receiveBroadcastStream()
+    return _broadcastStream
         .where((event) => event is String)
         .map(_statusFromEvent);
   }
 
   @override
   Stream<PerformanceFallbackEvent> get fallbackStream {
-    return eventChannel
-        .receiveBroadcastStream()
+    return _broadcastStream
         .where((event) => event is Map)
         .map((event) => PerformanceFallbackEvent.fromMap(event as Map));
   }

@@ -1,8 +1,11 @@
 package com.azmi010.mi_virtual_background_kit
 
+import android.app.ActivityManager
+import android.content.Context
 import com.azmi010.mi_virtual_background_kit.processor.FrameProcessor
 import com.azmi010.mi_virtual_background_kit.processor.attachFrameProcessor
 import com.azmi010.mi_virtual_background_kit.processor.detachFrameProcessor
+import com.azmi010.mi_virtual_background_kit.segmentation.Segmenter
 import com.azmi010.mi_virtual_background_kit.spike.SpikeFrameProcessor
 import com.azmi010.mi_virtual_background_kit.spike.SpikeGpuCompositor
 import com.azmi010.mi_virtual_background_kit.spike.SpikeMLKitBenchmark
@@ -68,7 +71,7 @@ class MiVirtualBackgroundKitPlugin :
     private var attachedTrack: Any? = null
     private var frameProcessor: FrameProcessor? = null
 
-    private var appContext: android.content.Context? = null
+    internal var appContext: android.content.Context? = null
     private var flutterAssets: FlutterPlugin.FlutterAssets? = null
 
     internal var imageDecoder: (String, Any?) -> android.graphics.Bitmap? = { type, data ->
@@ -84,6 +87,9 @@ class MiVirtualBackgroundKitPlugin :
     }
 
     internal var frameProcessorFactory: (() -> FrameProcessor)? = null
+    internal var isSupportedChecker: (() -> Boolean)? = null
+    internal var glEsVersionProvider: (() -> Int)? = null
+    internal var modelAssetChecker: (() -> Boolean)? = null
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         appContext = flutterPluginBinding.applicationContext
@@ -112,8 +118,22 @@ class MiVirtualBackgroundKitPlugin :
         when (call.method) {
             "getPlatformVersion" -> result.success("Android ${android.os.Build.VERSION.RELEASE}")
             "isSupported" -> {
-                // FR-13: Supported on Android SDK >= 24 (minSdk per ADR 0001)
-                result.success(android.os.Build.VERSION.SDK_INT >= 24)
+                // FR-13: Supported on Android SDK >= 24, OpenGL ES >= 2.0, and model asset available
+                val custom = isSupportedChecker
+                if (custom != null) {
+                    result.success(custom())
+                    return
+                }
+                val sdkOk = android.os.Build.VERSION.SDK_INT >= 24
+                val glEsVersion = glEsVersionProvider?.invoke() ?: run {
+                    val actManager = appContext?.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+                    actManager?.deviceConfigurationInfo?.reqGlEsVersion ?: if (appContext == null) 0x20000 else 0
+                }
+                val glEsOk = glEsVersion >= 0x20000
+                val modelOk = modelAssetChecker?.invoke() ?: run {
+                    appContext?.let { Segmenter.isModelAssetAvailable(it) } ?: true
+                }
+                result.success(sdkOk && glEsOk && modelOk)
             }
             "attach" -> {
                 val trackId = call.argument<String>("trackId")

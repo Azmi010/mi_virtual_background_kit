@@ -1,5 +1,6 @@
 import Flutter
 import UIKit
+import Metal
 import WebRTC
 import flutter_webrtc
 
@@ -185,10 +186,10 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
         result(checker())
         return
       }
-      runSegmenterSelfTest()
       if #available(iOS 15.0, *) {
         let modelOk = (Segmenter.resolveModelPath() != nil)
-        result(modelOk)
+        let metalOk = (MTLCreateSystemDefaultDevice() != nil)
+        result(modelOk && metalOk)
       } else {
         result(false)
       }

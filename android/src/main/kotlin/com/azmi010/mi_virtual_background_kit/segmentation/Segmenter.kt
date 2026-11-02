@@ -82,5 +82,16 @@ class Segmenter(context: Context) : MaskSegmenter {
 
     companion object {
         const val MODEL_ASSET = "selfie_segmenter.tflite"
+
+        /**
+         * Checks whether the bundled selfie_segmenter.tflite asset is readable in [context].
+         */
+        fun isModelAssetAvailable(context: Context): Boolean {
+            return try {
+                context.assets.open(MODEL_ASSET).use { true }
+            } catch (_: Throwable) {
+                false
+            }
+        }
     }
 }

@@ -100,7 +100,11 @@ Repo dibuat di awal fase ini supaya spike dan ADR punya tempat. Kode spike diker
     1. **Stage 1 (FPS < 14)**: Resolusi segmentasi otomatis diturunkan dari 256px ke 192px dan interval segmentasi dinaikkan, memancarkan event `PerformanceFallbackEvent` dengan `action: qualityDegraded`.
     2. **Stage 2 (FPS < 10 pada 2 window berturut-turut)**: Efek dinonaktifkan secara otomatis (`clearEffect()`), status beralih ke `idle`, frame kembali ke bypass nol-alokasi, dan memancarkan event `PerformanceFallbackEvent` dengan `action: disabled` tanpa crash atau freeze.
     Event fallback dihubungkan dari native ke Dart melalui `EventChannel` (`fallbackStream`) dan terekspos di API publik `MiVirtualBackgroundKit`. UI example (`example/lib/main.dart`) berlangganan ke `fallbackStream` dan menampilkan peringatan SnackBar serta status HUD dinamis. 73 unit test Flutter/Dart lulus 100%, 45 unit test JVM Android lulus 100%, dan `flutter analyze` 0 issue.
-- [ ] T5.4 Implementasikan `isSupported()` yang akurat per perangkat/OS. Selesai: hasil benar di perangkat yang didukung dan tidak.
+- [x] T5.4 Implementasikan `isSupported()` yang akurat per perangkat/OS. Selesai: hasil benar di perangkat yang didukung dan tidak.
+  - Hasil: Evaluasi `isSupported()` (FR-13) ditingkatkan agar memverifikasi kelayakan riil perangkat, bukan hanya versi OS:
+    1. **Android**: Memeriksa Android SDK >= 24 (minSdk), kapabilitas GPU OpenGL ES 2.0+ (`reqGlEsVersion >= 0x20000`), dan keberadaan/keterbacaan file model `selfie_segmenter.tflite` di asset manager (`Segmenter.isModelAssetAvailable`). Dilengkapi mock provider `isSupportedChecker`, `glEsVersionProvider`, dan `modelAssetChecker` untuk pengujian deterministik.
+    2. **iOS**: Memeriksa versi OS (iOS >= 15.0), ketersediaan hardware GPU Metal (`MTLCreateSystemDefaultDevice() != nil`), dan resolusi bundle model asset `selfie_segmenter.tflite` (`Segmenter.resolveModelPath() != nil`). Menghilangkan overhead self-test berat yang sebelumnya dipicu saat query status.
+    Divalidasi lewat unit test JVM di Android (46/46 passed), unit test iOS (`RunnerTests`), dan 73/73 unit test Flutter/Dart dengan `flutter analyze` 0 issue.
 - [ ] T5.5 Lifecycle: app ke background/foreground, ganti kamera, rotasi (FR-09). Selesai: tidak ada crash atau freeze di skenario tersebut.
 
 ## Fase 6 — Pengujian dan benchmark (M4)

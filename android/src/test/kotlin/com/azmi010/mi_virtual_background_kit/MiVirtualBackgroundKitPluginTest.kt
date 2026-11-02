@@ -292,4 +292,47 @@ internal class MiVirtualBackgroundKitPluginTest {
 
         Mockito.verify(mockSink).success(fallbackMap)
     }
+
+    @Test
+    fun onMethodCall_isSupported_checkerOverrides() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+
+        plugin.isSupportedChecker = { true }
+        val call = MethodCall("isSupported", null)
+        val mockResultTrue: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(call, mockResultTrue)
+        Mockito.verify(mockResultTrue).success(true)
+
+        plugin.isSupportedChecker = { false }
+        val mockResultFalse: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(call, mockResultFalse)
+        Mockito.verify(mockResultFalse).success(false)
+    }
+
+    @Test
+    fun onMethodCall_isSupported_checksGlEsAndModelAsset() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+
+        // Case 1: GLES < 2.0 (e.g. 0x10000)
+        plugin.glEsVersionProvider = { 0x10000 }
+        plugin.modelAssetChecker = { true }
+        val mockResultGlesFail: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(MethodCall("isSupported", null), mockResultGlesFail)
+        Mockito.verify(mockResultGlesFail).success(false)
+
+        // Case 2: GLES >= 2.0 but asset missing
+        plugin.glEsVersionProvider = { 0x20000 }
+        plugin.modelAssetChecker = { false }
+        val mockResultAssetFail: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(MethodCall("isSupported", null), mockResultAssetFail)
+        Mockito.verify(mockResultAssetFail).success(false)
+
+        // Case 3: GLES >= 2.0 and asset available
+        plugin.glEsVersionProvider = { 0x20000 }
+        plugin.modelAssetChecker = { true }
+        val mockResultSuccess: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(MethodCall("isSupported", null), mockResultSuccess)
+        val expected = android.os.Build.VERSION.SDK_INT >= 24
+        Mockito.verify(mockResultSuccess).success(expected)
+    }
 }
