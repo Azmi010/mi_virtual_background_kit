@@ -131,19 +131,6 @@ class RunnerTests: XCTestCase {
     waitForExpectations(timeout: 1)
   }
 
-  func testIsSupportedDefaultEvaluation() {
-    let plugin = MiVirtualBackgroundKitPlugin()
-    plugin.isSupportedChecker = nil
-
-    let call = FlutterMethodCall(methodName: "isSupported", arguments: nil)
-    let exp = expectation(description: "isSupported default evaluation")
-    plugin.handle(call) { result in
-      XCTAssertNotNil(result as? Bool)
-      exp.fulfill()
-    }
-    waitForExpectations(timeout: 1)
-  }
-
   func testAttachEmptyTrackIdReturnsInvalidTrack() {
     let plugin = MiVirtualBackgroundKitPlugin()
     let call = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "   "])
@@ -155,19 +142,6 @@ class RunnerTests: XCTestCase {
         return
       }
       XCTAssertEqual(err.code, "invalidTrack")
-      exp.fulfill()
-    }
-    waitForExpectations(timeout: 1)
-  }
-
-  func testIsSupportedDefaultEvaluation() {
-    let plugin = MiVirtualBackgroundKitPlugin()
-    plugin.isSupportedChecker = nil
-
-    let call = FlutterMethodCall(methodName: "isSupported", arguments: nil)
-    let exp = expectation(description: "isSupported default evaluation")
-    plugin.handle(call) { result in
-      XCTAssertNotNil(result as? Bool)
       exp.fulfill()
     }
     waitForExpectations(timeout: 1)
@@ -189,19 +163,6 @@ class RunnerTests: XCTestCase {
     waitForExpectations(timeout: 1)
   }
 
-  func testIsSupportedDefaultEvaluation() {
-    let plugin = MiVirtualBackgroundKitPlugin()
-    plugin.isSupportedChecker = nil
-
-    let call = FlutterMethodCall(methodName: "isSupported", arguments: nil)
-    let exp = expectation(description: "isSupported default evaluation")
-    plugin.handle(call) { result in
-      XCTAssertNotNil(result as? Bool)
-      exp.fulfill()
-    }
-    waitForExpectations(timeout: 1)
-  }
-
   func testDetachWithoutAttachIsIdempotentSuccess() {
     let plugin = MiVirtualBackgroundKitPlugin()
     let call = FlutterMethodCall(methodName: "detach", arguments: nil)
@@ -214,19 +175,6 @@ class RunnerTests: XCTestCase {
     waitForExpectations(timeout: 1)
   }
 
-  func testIsSupportedDefaultEvaluation() {
-    let plugin = MiVirtualBackgroundKitPlugin()
-    plugin.isSupportedChecker = nil
-
-    let call = FlutterMethodCall(methodName: "isSupported", arguments: nil)
-    let exp = expectation(description: "isSupported default evaluation")
-    plugin.handle(call) { result in
-      XCTAssertNotNil(result as? Bool)
-      exp.fulfill()
-    }
-    waitForExpectations(timeout: 1)
-  }
-
   func testDisposeIsIdempotentSuccess() {
     let plugin = MiVirtualBackgroundKitPlugin()
     let call = FlutterMethodCall(methodName: "dispose", arguments: nil)
@@ -234,19 +182,6 @@ class RunnerTests: XCTestCase {
     let exp = expectation(description: "must succeed")
     plugin.handle(call) { result in
       XCTAssertNil(result)
-      exp.fulfill()
-    }
-    waitForExpectations(timeout: 1)
-  }
-
-  func testIsSupportedDefaultEvaluation() {
-    let plugin = MiVirtualBackgroundKitPlugin()
-    plugin.isSupportedChecker = nil
-
-    let call = FlutterMethodCall(methodName: "isSupported", arguments: nil)
-    let exp = expectation(description: "isSupported default evaluation")
-    plugin.handle(call) { result in
-      XCTAssertNotNil(result as? Bool)
       exp.fulfill()
     }
     waitForExpectations(timeout: 1)
@@ -279,19 +214,6 @@ class RunnerTests: XCTestCase {
       exp3.fulfill()
     }
 
-    waitForExpectations(timeout: 1)
-  }
-
-  func testIsSupportedDefaultEvaluation() {
-    let plugin = MiVirtualBackgroundKitPlugin()
-    plugin.isSupportedChecker = nil
-
-    let call = FlutterMethodCall(methodName: "isSupported", arguments: nil)
-    let exp = expectation(description: "isSupported default evaluation")
-    plugin.handle(call) { result in
-      XCTAssertNotNil(result as? Bool)
-      exp.fulfill()
-    }
     waitForExpectations(timeout: 1)
   }
 
@@ -483,19 +405,6 @@ class RunnerTests: XCTestCase {
     plugin.handle(disposeCall) { result in
       XCTAssertNil(result)
       expDispose2.fulfill()
-    }
-    waitForExpectations(timeout: 1)
-  }
-
-  func testIsSupportedDefaultEvaluation() {
-    let plugin = MiVirtualBackgroundKitPlugin()
-    plugin.isSupportedChecker = nil
-
-    let call = FlutterMethodCall(methodName: "isSupported", arguments: nil)
-    let exp = expectation(description: "isSupported default evaluation")
-    plugin.handle(call) { result in
-      XCTAssertNotNil(result as? Bool)
-      exp.fulfill()
     }
     waitForExpectations(timeout: 1)
   }
@@ -785,19 +694,6 @@ class RunnerTests: XCTestCase {
     waitForExpectations(timeout: 1)
   }
 
-  func testIsSupportedDefaultEvaluation() {
-    let plugin = MiVirtualBackgroundKitPlugin()
-    plugin.isSupportedChecker = nil
-
-    let call = FlutterMethodCall(methodName: "isSupported", arguments: nil)
-    let exp = expectation(description: "isSupported default evaluation")
-    plugin.handle(call) { result in
-      XCTAssertNotNil(result as? Bool)
-      exp.fulfill()
-    }
-    waitForExpectations(timeout: 1)
-  }
-
   func testEventChannelStatusStreamLifecycle() {
     let plugin = MiVirtualBackgroundKitPlugin()
     var events: [String] = []
@@ -986,19 +882,6 @@ class RunnerTests: XCTestCase {
     waitForExpectations(timeout: 1)
   }
 
-  func testIsSupportedDefaultEvaluation() {
-    let plugin = MiVirtualBackgroundKitPlugin()
-    plugin.isSupportedChecker = nil
-
-    let call = FlutterMethodCall(methodName: "isSupported", arguments: nil)
-    let exp = expectation(description: "isSupported default evaluation")
-    plugin.handle(call) { result in
-      XCTAssertNotNil(result as? Bool)
-      exp.fulfill()
-    }
-    waitForExpectations(timeout: 1)
-  }
-
   func testPluginSetEffectInvalidImage() {
     let plugin = MiVirtualBackgroundKitPlugin()
     let call = FlutterMethodCall(methodName: "setEffect", arguments: [
@@ -1013,19 +896,6 @@ class RunnerTests: XCTestCase {
         return
       }
       XCTAssertEqual(err.code, "invalidImage")
-      exp.fulfill()
-    }
-    waitForExpectations(timeout: 1)
-  }
-
-  func testIsSupportedDefaultEvaluation() {
-    let plugin = MiVirtualBackgroundKitPlugin()
-    plugin.isSupportedChecker = nil
-
-    let call = FlutterMethodCall(methodName: "isSupported", arguments: nil)
-    let exp = expectation(description: "isSupported default evaluation")
-    plugin.handle(call) { result in
-      XCTAssertNotNil(result as? Bool)
       exp.fulfill()
     }
     waitForExpectations(timeout: 1)
@@ -1296,6 +1166,51 @@ class RunnerTests: XCTestCase {
     XCTAssertNotNil(fallbackEvent)
     XCTAssertEqual(fallbackEvent?["action"] as? String, "disabled")
     XCTAssertTrue((fallbackEvent?["reason"] as? String)?.contains("fps_critical") ?? false)
+
+    processor.release()
+  }
+
+  func testFrameGapAfterBackground_resetsWindowWithoutFalseFallback() throws {
+    let mockSegmenter = MockSegmenter()
+    let mockCompositor = MockCompositor()
+    var fallbackEvent: [String: Any]? = nil
+    mockCompositor.uploadMask(PersonMask(alpha: [255], width: 1, height: 1))
+
+    let processor = FrameProcessor(
+      compositor: mockCompositor,
+      segmenterProvider: { mockSegmenter },
+      onFallbackEvent: { event in fallbackEvent = event }
+    )
+    processor.setQuality(segmentationWidth: 256, edgeSmoothing: 0.5, targetFps: 30)
+    try processor.setBlurEffect(radius: 10.0)
+
+    guard let pb = createTestCVPixelBuffer() else {
+      XCTFail("Could not create pixel buffer")
+      return
+    }
+    let rtcBuffer = RTCCVPixelBuffer(pixelBuffer: pb)
+
+    // Frame before "background"
+    _ = processor.onFrame(RTCVideoFrame(buffer: rtcBuffer, rotation: ._0, timeStampNs: 0))
+
+    // App returns after 10s: without gap reset the next 45 frames would
+    // measure ~4.5 fps over the stale window and trip stage-1 fallback.
+    let resumeBase: Int64 = 10_000_000_000
+    _ = processor.onFrame(RTCVideoFrame(buffer: rtcBuffer, rotation: ._0, timeStampNs: resumeBase))
+    for i in 1...50 {
+      _ = processor.onFrame(
+        RTCVideoFrame(
+          buffer: rtcBuffer,
+          rotation: ._0,
+          timeStampNs: resumeBase + Int64(i) * 33_000_000
+        )
+      )
+    }
+
+    XCTAssertNil(fallbackEvent)
+    XCTAssertEqual(processor.segmentationWidth, 256)
+    XCTAssertFalse(processor.isFallbackDisabled)
+    XCTAssertNotNil(processor.currentEffect)
 
     processor.release()
   }

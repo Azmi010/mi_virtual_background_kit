@@ -241,6 +241,27 @@ internal class MiVirtualBackgroundKitPluginTest {
     }
 
     @Test
+    fun reattachReplacesOldProcessor() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+        var detachCount = 0
+        plugin.trackAttacher = { _, _ -> Any() }
+        plugin.trackDetacher = { _, _ -> detachCount++ }
+
+        val attach1 = MethodCall("attach", mapOf("trackId" to "track-1"))
+        val result1: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(attach1, result1)
+        Mockito.verify(result1).success(null)
+        assertEquals(0, detachCount)
+
+        val attach2 = MethodCall("attach", mapOf("trackId" to "track-2"))
+        val result2: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(attach2, result2)
+        Mockito.verify(result2).success(null)
+        assertEquals(1, detachCount)
+        assertEquals("active", plugin.currentStatus)
+    }
+
+    @Test
     fun onMethodCall_setQuality_succeeds() {
         val plugin = MiVirtualBackgroundKitPlugin()
         val dummyTrack = Any()

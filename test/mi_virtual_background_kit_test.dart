@@ -215,6 +215,26 @@ void main() {
       expect(mock.lastQuality, equals(q.toMap()));
     });
 
+    test('re-applies last effect after re-attach (camera switch)', () async {
+      await kit.attach(FakeTrack('track-1'));
+      await kit.setEffect(const BlurEffect(radius: 12));
+      mock.calls.clear();
+      mock.effects.clear();
+
+      await kit.attach(FakeTrack('track-2'));
+      expect(mock.calls, contains('attach:track-2'));
+      expect(mock.effects, hasLength(1));
+      expect(mock.effects.single['type'], 'blur');
+      expect(mock.effects.single['radius'], 12.0);
+    });
+
+    test('does not re-apply effect when none was set', () async {
+      await kit.attach(FakeTrack('track-1'));
+      mock.effects.clear();
+      await kit.attach(FakeTrack('track-2'));
+      expect(mock.effects, isEmpty);
+    });
+
     test('rejects invalid quality on attach', () async {
       await expectLater(
         kit.attach(

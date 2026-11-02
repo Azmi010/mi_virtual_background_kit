@@ -117,6 +117,7 @@ class FrameProcessor(
     private var windowStartTimestampNs: Long = 0L
     private var windowFrameCount: Int = 0
     private var lowFpsWindowCount: Int = 0
+    private var lastFrameTimestampNs: Long = 0L
 
     /** Sets quality parameters controlling segmentation resolution, smoothing, and fps. */
     fun setQuality(segmentationWidth: Int, edgeSmoothing: Float, targetFps: Int) {
@@ -198,6 +199,17 @@ class FrameProcessor(
         val buffer = frame.buffer as? VideoFrame.TextureBuffer ?: return frame
 
         val currentTimestamp = if (frame.timestampNs > 0) frame.timestampNs else System.nanoTime()
+
+        // FR-09: background/foreground or camera restart leaves a multi-second
+        // gap; a stale window would measure near-zero fps and falsely trip FR-12.
+        if (lastFrameTimestampNs != 0L &&
+            currentTimestamp - lastFrameTimestampNs > FRAME_GAP_RESET_NS
+        ) {
+            windowStartTimestampNs = 0L
+            windowFrameCount = 0
+            lowFpsWindowCount = 0
+        }
+        lastFrameTimestampNs = currentTimestamp
 
         // FR-12: Monitor frame rate across sliding window and evaluate performance fallback
         if (windowStartTimestampNs == 0L) {
@@ -445,6 +457,7 @@ class FrameProcessor(
         const val FPS_MONITOR_WINDOW_FRAMES = 45
         const val DEGRADE_FPS_THRESHOLD = 14
         const val CRITICAL_LOW_FPS = 10
+        const val FRAME_GAP_RESET_NS = 1_000_000_000L
     }
 }
 

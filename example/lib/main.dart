@@ -283,6 +283,24 @@ class _SpikePageState extends State<SpikePage> {
     }
   }
 
+  Future<void> _switchCamera() async {
+    try {
+      final track = _stream?.getVideoTracks().first;
+      if (track == null) return;
+      await Helper.switchCamera(track);
+      // FR-09: same track id after native switch; re-attach replaces the
+      // processor and the kit re-applies the last effect automatically.
+      if (_prodAttached) {
+        await _kit.attach(track, quality: _quality);
+      }
+      debugPrint('switched camera track=${track.id}');
+      if (mounted) setState(() => _status = 'camera switched');
+    } catch (e) {
+      debugPrint('switchCamera error: $e');
+      if (mounted) setState(() => _status = 'switch ERROR $e');
+    }
+  }
+
   Future<void> _applyNone() async {
     await _kit.setEffect(const NoEffect());
     setState(() {
@@ -347,6 +365,9 @@ class _SpikePageState extends State<SpikePage> {
     _statusSubscription?.cancel();
     _fallbackSubscription?.cancel();
     _timer?.cancel();
+    _kit.dispose();
+    _stream?.getTracks().forEach((t) => t.stop());
+    _stream?.dispose();
     _renderer.dispose();
     super.dispose();
   }
@@ -402,6 +423,11 @@ class _SpikePageState extends State<SpikePage> {
                 onPressed: _prodAttached ? _detach : null,
                 icon: const Icon(Icons.link_off, size: 18),
                 label: const Text('Detach'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: _switchCamera,
+                icon: const Icon(Icons.cameraswitch, size: 18),
+                label: const Text('Switch Cam'),
               ),
             ],
           ),

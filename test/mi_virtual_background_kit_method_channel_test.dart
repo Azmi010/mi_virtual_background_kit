@@ -183,7 +183,8 @@ void main() {
       ]);
     });
 
-    test('fallbackStream maps event payload to PerformanceFallbackEvent', () async {
+    test('fallbackStream maps event payload to PerformanceFallbackEvent',
+        () async {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockStreamHandler(
         platform.eventChannel,
@@ -214,7 +215,8 @@ void main() {
       expect(fallbackEvents[1].action, FallbackAction.disabled);
     });
 
-    test('concurrent statusStream and fallbackStream both receive events', () async {
+    test('concurrent statusStream and fallbackStream both receive events',
+        () async {
       final customPlatform = MethodChannelMiVirtualBackgroundKit();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockStreamHandler(

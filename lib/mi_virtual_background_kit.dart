@@ -25,6 +25,7 @@ class MiVirtualBackgroundKit {
 
   bool _attached = false;
   bool _disposed = false;
+  VirtualBackgroundEffect? _lastEffect;
 
   /// Whether the current device supports background processing.
   Future<bool> isSupported() => _platform.isSupported();
@@ -55,6 +56,12 @@ class MiVirtualBackgroundKit {
     _validateQuality(quality);
     await _platform.attach(id, quality: quality.toMap());
     _attached = true;
+    // FR-09: native re-attach builds a fresh processor; re-apply last effect
+    // so camera switch keeps the background without a second setEffect call.
+    final effect = _lastEffect;
+    if (effect != null) {
+      await _platform.setEffect(effect.toMap());
+    }
   }
 
   /// Updates the processing [quality] configuration at runtime (FR-11).
@@ -73,6 +80,7 @@ class MiVirtualBackgroundKit {
     _ensureNotDisposed();
     _validateEffect(effect);
     await _platform.setEffect(effect.toMap());
+    _lastEffect = effect;
   }
 
   /// Detaches the processor. Idempotent: safe to call when not attached or

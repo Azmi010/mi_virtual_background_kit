@@ -632,4 +632,42 @@ internal class FrameProcessorTest {
 
         processor.release()
     }
+
+    @Test
+    fun frameGapAfterBackground_resetsWindowWithoutFalseFallback() {
+        val fakeSegmenter = FakeSegmenter()
+        val fakeCompositor = FakeCompositor()
+        var fallbackMap: Map<String, Any?>? = null
+        fakeCompositor.uploadMask(PersonMask(ByteArray(4), 2, 2))
+        val mockBuffer = Mockito.mock(VideoFrame.TextureBuffer::class.java)
+        Mockito.`when`(mockBuffer.unscaledWidth).thenReturn(640)
+        Mockito.`when`(mockBuffer.unscaledHeight).thenReturn(480)
+        Mockito.`when`(mockBuffer.type).thenReturn(VideoFrame.TextureBuffer.Type.RGB)
+
+        val processor = FrameProcessor(
+            segmenterProvider = { fakeSegmenter },
+            compositorProvider = { fakeCompositor },
+            onFallbackEvent = { event -> fallbackMap = event },
+        )
+        processor.setQuality(256, 0.5f, 30)
+        processor.setBlurEffect(10.0f)
+
+        // Frame before "background"
+        processor.onFrame(VideoFrame(mockBuffer, 0, 0L))
+
+        // App returns after 10s: without gap reset the next 45 frames would
+        // measure ~4.5 fps over the stale window and trip stage-1 fallback.
+        val resumeBase = 10_000_000_000L
+        processor.onFrame(VideoFrame(mockBuffer, 0, resumeBase))
+        for (i in 1..50) {
+            processor.onFrame(VideoFrame(mockBuffer, 0, resumeBase + i * 33_000_000L))
+        }
+
+        assertNull(fallbackMap)
+        assertEquals(256, processor.segmentationWidth)
+        assertFalse(processor.isFallbackDisabled)
+        assertNotNull(processor.currentEffect)
+
+        processor.release()
+    }
 }

@@ -49,6 +49,8 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
     private var windowStartTimestampNs: Int64 = 0
     private var windowFrameCount: Int = 0
     private var lowFpsWindowCount: Int = 0
+    private var lastFrameTimestampNs: Int64 = 0
+    public static let frameGapResetNs: Int64 = 1_000_000_000
 
     public var currentEffect: EffectState?
 
@@ -207,10 +209,19 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
 
         let currentTimestamp = frame.timeStampNs > 0 ? frame.timeStampNs : Int64(Date().timeIntervalSince1970 * 1_000_000_000)
 
+        // FR-09: background/foreground or camera restart leaves a multi-second
+        // gap; a stale window would measure near-zero fps and falsely trip FR-12.
+        lock.lock()
+        if lastFrameTimestampNs != 0 && currentTimestamp - lastFrameTimestampNs > FrameProcessor.frameGapResetNs {
+            windowStartTimestampNs = 0
+            windowFrameCount = 0
+            lowFpsWindowCount = 0
+        }
+        lastFrameTimestampNs = currentTimestamp
+
         // FR-12: Monitor frame rate across sliding window and evaluate performance fallback
         var shouldEvaluate = false
         var measuredFps: Double = 0.0
-        lock.lock()
         if windowStartTimestampNs == 0 {
             windowStartTimestampNs = currentTimestamp
             windowFrameCount = 0

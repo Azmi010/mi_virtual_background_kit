@@ -105,7 +105,8 @@ Repo dibuat di awal fase ini supaya spike dan ADR punya tempat. Kode spike diker
     1. **Android**: Memeriksa Android SDK >= 24 (minSdk), kapabilitas GPU OpenGL ES 2.0+ (`reqGlEsVersion >= 0x20000`), dan keberadaan/keterbacaan file model `selfie_segmenter.tflite` di asset manager (`Segmenter.isModelAssetAvailable`). Dilengkapi mock provider `isSupportedChecker`, `glEsVersionProvider`, dan `modelAssetChecker` untuk pengujian deterministik.
     2. **iOS**: Memeriksa versi OS (iOS >= 15.0), ketersediaan hardware GPU Metal (`MTLCreateSystemDefaultDevice() != nil`), dan resolusi bundle model asset `selfie_segmenter.tflite` (`Segmenter.resolveModelPath() != nil`). Menghilangkan overhead self-test berat yang sebelumnya dipicu saat query status.
     Divalidasi lewat unit test JVM di Android (46/46 passed), unit test iOS (`RunnerTests`), dan 73/73 unit test Flutter/Dart dengan `flutter analyze` 0 issue.
-- [ ] T5.5 Lifecycle: app ke background/foreground, ganti kamera, rotasi (FR-09). Selesai: tidak ada crash atau freeze di skenario tersebut.
+- [x] T5.5 Lifecycle: app ke background/foreground, ganti kamera, rotasi (FR-09). Selesai: tidak ada crash atau freeze di skenario tersebut.
+  - Hasil: FPS monitor reset window bila jeda antar-frame > 1 dtk (cegah false fallback FR-12 setelah background/foreground) di Android `FrameProcessor.kt` dan iOS `FrameProcessor.swift`. Dart `attach` otomatis re-apply `_lastEffect` sehingga ganti kamera (re-attach) mempertahankan efek. Test: Android `reattachReplacesOldProcessor` + `frameGapAfterBackground_resetsWindowWithoutFalseFallback`, iOS `testFrameGapAfterBackground_resetsWindowWithoutFalseFallback`, Dart re-apply effect on re-attach. Example: tombol Switch Cam (`Helper.switchCamera`), `dispose` memanggil `_kit.dispose()` + stop tracks. Rotasi sudah per-frame (test matrix existing T3.4/T4.4).
 
 ## Fase 6 — Pengujian dan benchmark (M4)
 
