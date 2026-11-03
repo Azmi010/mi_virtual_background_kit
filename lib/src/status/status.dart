@@ -15,6 +15,7 @@ enum ProcessorStatus {
 
 /// Error raised by the kit. Subclasses map 1:1 to the error codes in FR-08.
 sealed class BackgroundException implements Exception {
+  /// Creates an exception with optional [message] detail.
   const BackgroundException([this.message]);
 
   /// Optional human-readable detail.

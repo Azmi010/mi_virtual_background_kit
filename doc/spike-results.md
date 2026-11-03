@@ -104,7 +104,7 @@ Catatan: angka ML Kit lebih cepat di device ini, TAPI mask-nya fixed 256x256
 - ML Kit: buffer FLOAT32 confidence, selalu 256x256 (nama asset model:
   `selfiesegmentation_mlkit-256x256-2021_01_19-v1215.f16.tflite`, bundel di AAR).
 
-### Akurasi tepi (overlay, `docs/spike-t06/`)
+### Akurasi tepi (overlay, `doc/spike-t06/`)
 
 Overlay = mask hijau 50% di atas frame asli, diambil dari P1 dan E1.
 

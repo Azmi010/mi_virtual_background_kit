@@ -2,7 +2,7 @@
 
 Tanggal: 2 November 2026  
 Protocol: sesi 10 menit per efek, effect default quality **Balanced**, radius blur 20, kamera depan 640×480 @30 fps.  
-Raw dump: `docs/bench-raw/` + logcat/`flutter run` (Android: `a1_*`, iOS: sesi di `/tmp/ios_*`).
+Raw dump: `doc/bench-raw/` + logcat/`flutter run` (Android: `a1_*`, iOS: sesi di `/tmp/ios_*`).
 
 ## Perangkat
 
@@ -101,7 +101,7 @@ Perlu sesi ulang tanpa kabel (wireless adb / lepas charger) untuk angka drain. *
 
 ## Soak 30 menit (T6.5, A1)
 
-Tanggal: 3 November 2026 · Tool: `tool/soak.sh 30` · Raw: `docs/bench-raw/a1_soak_20261103_104351*`
+Tanggal: 3 November 2026 · Tool: `tool/soak.sh 30` · Raw: `doc/bench-raw/a1_soak_20261103_104351*`
 
 - Durasi penuh 30 menit, 30 sampel tiap 60 dtk, PID proses **sama** (29010) dari awal sampai akhir — tanpa restart atau crash.
 - Memori Pss: 163 MB (cold start) → ~250 MB (warmup menit pertama) → **plateau 250–258 MB selama 27 menit sisanya**. Delta warmup→akhir +6,6 MB ≈ noise GC — **tidak ada kebocoran memori**.

@@ -64,10 +64,6 @@ class MockPlatform
   Stream<PerformanceFallbackEvent> get fallbackStream =>
       fallbackController.stream;
 
-  // Unused spike API.
-  @override
-  Future<String?> getPlatformVersion() async => '42';
-
   @override
   Future<bool> spikeAttach(String trackId) async {
     calls.add('spikeAttach:$trackId');

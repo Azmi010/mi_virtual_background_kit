@@ -37,3 +37,7 @@ migrate_working_dir/
 # The example build directory is symlinked outside the repository on some setups.
 # See tool/link_example_build.sh.
 example/build
+
+# Ephemeral SPM dependency symlinks for local plugin development.
+ios/FlutterFramework
+ios/flutter_webrtc*

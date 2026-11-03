@@ -40,6 +40,7 @@ final class BlurEffect extends VirtualBackgroundEffect {
 final class ColorEffect extends VirtualBackgroundEffect {
   const ColorEffect(this.color);
 
+  /// Fill color applied behind the person.
   final Color color;
 
   @override
@@ -76,11 +77,13 @@ final class ImageEffect extends VirtualBackgroundEffect {
   })  : sourceType = ImageSourceType.bytes,
         data = bytes;
 
+  /// Whether [data] holds an asset path, file path, or raw bytes.
   final ImageSourceType sourceType;
 
   /// Asset path, file path, or raw bytes depending on [sourceType].
   final Object data;
 
+  /// How the image is fitted to the frame.
   final BackgroundFit fit;
 
   @override
@@ -94,8 +97,13 @@ final class ImageEffect extends VirtualBackgroundEffect {
 
 /// Source kind for [ImageEffect].
 enum ImageSourceType {
+  /// Flutter asset path (`assets/...`).
   asset,
+
+  /// Absolute file path on disk.
   file,
+
+  /// Raw encoded image bytes (e.g. downloaded by the app).
   bytes,
 }
 

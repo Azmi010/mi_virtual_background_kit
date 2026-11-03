@@ -6,7 +6,7 @@ set -euo pipefail
 SERIAL="${ANDROID_SERIAL:-RR8T601FP0R}"
 LABEL="${1:-snapshot}"
 PKG="com.azmi010.mi_virtual_background_kit_example"
-OUT_DIR="docs/bench-raw"
+OUT_DIR="doc/bench-raw"
 mkdir -p "$OUT_DIR"
 TS="$(date +%Y%m%d_%H%M%S)"
 BASE="$OUT_DIR/a1_${LABEL}_${TS}"

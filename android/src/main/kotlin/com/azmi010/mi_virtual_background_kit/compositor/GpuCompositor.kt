@@ -2,6 +2,8 @@ package com.azmi010.mi_virtual_background_kit.compositor
 
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.os.Handler
+import android.os.Looper
 import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.opengl.GLUtils
@@ -46,6 +48,20 @@ interface FrameCompositor {
 class GpuCompositor : FrameCompositor {
 
     private val yuvConverter = YuvConverter()
+
+    @Volatile
+    private var toI420Handler: Handler? = null
+
+    /**
+     * Handler bound to the capture thread (owner of the shared EGL context).
+     * Encoder/publish paths call toI420()/cropAndScale() on this buffer; a null
+     * handler makes ThreadUtils throw over JNI and abort native code.
+     */
+    private fun outBufferHandler(): Handler? {
+        toI420Handler?.let { return it }
+        val looper = Looper.myLooper() ?: return null
+        return Handler(looper).also { toI420Handler = it }
+    }
 
     private val tempMatrixValues = FloatArray(9)
     private val camMatrixArray = FloatArray(16)
@@ -450,7 +466,7 @@ class GpuCompositor : FrameCompositor {
             VideoFrame.TextureBuffer.Type.RGB,
             outTexture,
             IDENTITY_MATRIX,
-            null,
+            outBufferHandler(),
             yuvConverter,
             EMPTY_RELEASE_CALLBACK,
         )
@@ -526,7 +542,7 @@ class GpuCompositor : FrameCompositor {
             VideoFrame.TextureBuffer.Type.RGB,
             outTexture,
             IDENTITY_MATRIX,
-            null,
+            outBufferHandler(),
             yuvConverter,
             EMPTY_RELEASE_CALLBACK,
         )
@@ -610,7 +626,7 @@ class GpuCompositor : FrameCompositor {
             VideoFrame.TextureBuffer.Type.RGB,
             outTexture,
             IDENTITY_MATRIX,
-            null,
+            outBufferHandler(),
             yuvConverter,
             EMPTY_RELEASE_CALLBACK,
         )
@@ -628,7 +644,7 @@ class GpuCompositor : FrameCompositor {
             VideoFrame.TextureBuffer.Type.RGB,
             outTexture,
             IDENTITY_MATRIX,
-            null,
+            outBufferHandler(),
             yuvConverter,
             EMPTY_RELEASE_CALLBACK,
         )

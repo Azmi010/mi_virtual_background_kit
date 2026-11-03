@@ -42,7 +42,7 @@ Legend hasil: `pass` · `fail` · `n/a` · kosong = belum dijalankan.
 | S17 | `dispose` bersih, kit tidak terpakai lagi | FR-10 | | | |
 | S18 | Loop attach/detach 100× tanpa leak/crash | FR-10 | pass | pass | T6.5 |
 | S19 | Soak 30 menit: no crash, memori stabil | — | pass | pass | T6.5 |
-| S20 | Benchmark 10 menit per efek: fps, latensi, CPU, mem, baterai | §7 | | | T6.2 → `docs/benchmark.md` |
+| S20 | Benchmark 10 menit per efek: fps, latensi, CPU, mem, baterai | §7 | | | T6.2 → `doc/benchmark.md` |
 
 ## 3. Cakupan vs PRD
 

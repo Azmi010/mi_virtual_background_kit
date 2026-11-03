@@ -30,7 +30,6 @@ void main() {
       expectUnimplemented(() => platform.dispose());
       expect(() => platform.statusStream, throwsUnimplementedError);
       expect(() => platform.fallbackStream, throwsUnimplementedError);
-      expectUnimplemented(() => platform.getPlatformVersion());
     });
 
     test('spike methods', () {

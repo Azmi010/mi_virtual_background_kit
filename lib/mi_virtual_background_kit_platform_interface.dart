@@ -4,6 +4,8 @@ import 'mi_virtual_background_kit_method_channel.dart';
 import 'src/fallback/fallback.dart';
 import 'src/status/status.dart';
 
+/// Platform interface that implementations of mi_virtual_background_kit must
+/// extend (federated-plugin contract).
 abstract class MiVirtualBackgroundKitPlatform extends PlatformInterface {
   /// Constructs a MiVirtualBackgroundKitPlatform.
   MiVirtualBackgroundKitPlatform() : super(token: _token);
@@ -24,10 +26,6 @@ abstract class MiVirtualBackgroundKitPlatform extends PlatformInterface {
   static set instance(MiVirtualBackgroundKitPlatform instance) {
     PlatformInterface.verifyToken(instance, _token);
     _instance = instance;
-  }
-
-  Future<String?> getPlatformVersion() {
-    throw UnimplementedError('platformVersion() has not been implemented.');
   }
 
   // --- Public API (Fase 2) ---
@@ -72,50 +70,61 @@ abstract class MiVirtualBackgroundKitPlatform extends PlatformInterface {
     throw UnimplementedError('fallbackStream has not been implemented.');
   }
 
-  // --- Spike T0.4 (temporary) ---
+  // --- Spike T0.4 (temporary, removed in T9.1) ---
 
+  /// Temporary spike API; removed before publish.
   Future<bool> spikeAttach(String trackId) {
     throw UnimplementedError('spikeAttach() has not been implemented.');
   }
 
+  /// Temporary spike API; removed before publish.
   Future<int> spikeFrameCount() {
     throw UnimplementedError('spikeFrameCount() has not been implemented.');
   }
 
+  /// Temporary spike API; removed before publish.
   Future<Map<dynamic, dynamic>> spikeInfo() {
     throw UnimplementedError('spikeInfo() has not been implemented.');
   }
 
+  /// Temporary spike API; removed before publish.
   Future<bool> spikeBenchmarkReadback() {
     throw UnimplementedError(
         'spikeBenchmarkReadback() has not been implemented.');
   }
 
+  /// Temporary spike API; removed before publish.
   Future<Map<dynamic, dynamic>> spikeSegmentBenchmark() {
     throw UnimplementedError(
         'spikeSegmentBenchmark() has not been implemented.');
   }
 
+  /// Temporary spike API; removed before publish.
   Future<Map<dynamic, dynamic>> spikeCompositeBench() {
     throw UnimplementedError('spikeCompositeBench() has not been implemented.');
   }
 
+  /// Temporary spike API; removed before publish.
   Future<Map<dynamic, dynamic>> spikeReadback() {
     throw UnimplementedError('spikeReadback() has not been implemented.');
   }
 
+  /// Temporary spike API; removed before publish.
   Future<bool> spikeEnableGpu(bool enabled) {
     throw UnimplementedError('spikeEnableGpu() has not been implemented.');
   }
 
+  /// Temporary spike API; removed before publish.
   Future<Map<dynamic, dynamic>> spikeGpuInfo() {
     throw UnimplementedError('spikeGpuInfo() has not been implemented.');
   }
 
+  /// Temporary spike API; removed before publish.
   Future<bool> spikeSetEnabled(bool enabled) {
     throw UnimplementedError('spikeSetEnabled() has not been implemented.');
   }
 
+  /// Temporary spike API; removed before publish.
   Future<bool> spikeDetach(String trackId) {
     throw UnimplementedError('spikeDetach() has not been implemented.');
   }

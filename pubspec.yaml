@@ -12,6 +12,16 @@ topics:
   - blur
   - camera
 
+screenshots:
+  - description: Demo switching effects (none, blur, image, gradient)
+    path: screenshots/demo.gif
+  - description: Blur effect on a camera preview
+    path: screenshots/blur.png
+  - description: Image background (asset) with fit cover
+    path: screenshots/image-office.png
+  - description: Image background from a gradient asset
+    path: screenshots/image-gradient.png
+
 environment:
   sdk: ^3.5.0
   flutter: '>=3.24.0'

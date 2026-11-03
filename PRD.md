@@ -101,11 +101,11 @@ Angka di bawah adalah target awal yang divalidasi lewat benchmark pada fase peng
 - Performa: mempertahankan 24–30 fps pada resolusi 640×480 hingga 720p di perangkat kelas menengah; tambahan latency per frame dicatat dan dipublikasikan di README. Target diukur di spike: komposit GPU 1 ms per frame pada 640×480 di perangkat low-end 32-bit.
 - Resource: penggunaan CPU, memori, dan baterai diukur dan dilaporkan di bagian "Batasan".
 - Ukuran: model dan dependensi native tidak membengkakkan ukuran app secara berlebihan; model besar dibuat opsional atau diunduh saat runtime. Model segmentasi yang dipakai `selfie_segmenter.tflite` berukuran 250 KB dan di-_bundle_ sebagai asset, tanpa unduhan saat runtime.
-- Privasi: semua pemrosesan on-device, tanpa panggilan jaringan, tanpa telemetri. Mesin segmentasi MediaPipe dipilih; ML Kit Selfie Segmentation menarik stack `datatransport` + `firebase-encoders` + `play-services` (kapabel network) dan berlisensi ML Kit Terms of Service, sehingga tidak cocok untuk package MIT tanpa-jaringan (bandingkan [ADR 0001](docs/adr/0001-core-architecture.md)).
+- Privasi: semua pemrosesan on-device, tanpa panggilan jaringan, tanpa telemetri. Mesin segmentasi MediaPipe dipilih; ML Kit Selfie Segmentation menarik stack `datatransport` + `firebase-encoders` + `play-services` (kapabel network) dan berlisensi ML Kit Terms of Service, sehingga tidak cocok untuk package MIT tanpa-jaringan (bandingkan [ADR 0001](doc/adr/0001-core-architecture.md)).
 - Kompatibilitas: rentang versi `flutter_webrtc` yang didukung dinyatakan eksplisit dan diuji di batas bawah dan atas. Rentang yang diuji pada spike: `1.6.2` sampai `1.6.2+hotfix.4`.
-- Versi OS minimum: ditetapkan setelah spike (kandidat: Android minSdk 24, iOS 13). Ditetapkan pada spike: Android minSdk 24, iOS 13.
+- Versi OS minimum: ditetapkan setelah spike (kandidat: Android minSdk 24, iOS 13). Ditetapkan pada spike: Android minSdk 24, iOS 13. Dikonfirmasi saat implementasi (podspec `MediaPipeTasksVision`): Android minSdk 24, **iOS 15.0**.
 - Kualitas kode: `flutter analyze` tanpa peringatan; target pub points maksimum.
-- Lisensi: MIT untuk kode plugin (lihat [ADR 0001](docs/adr/0001-core-architecture.md)); lisensi model segmentasi harus kompatibel dengan redistribusi.
+- Lisensi: MIT untuk kode plugin (lihat [ADR 0001](doc/adr/0001-core-architecture.md)); lisensi model segmentasi harus kompatibel dengan redistribusi.
 
 ## 8. Draft API publik
 
@@ -144,8 +144,8 @@ Prinsip desain API:
 ### Bentuk final setelah spike (24 Oktober 2026)
 
 Bentuk di atas tetap, dengan penyesuaian berikut hasil spike M0 (lihat
-[ADR 0001](docs/adr/0001-core-architecture.md) dan
-[spike-results](docs/spike-results.md)):
+[ADR 0001](doc/adr/0001-core-architecture.md) dan
+[spike-results](doc/spike-results.md)):
 
 - `attach` menerima `MediaStreamTrack` dari `flutter_webrtc`, bukan objek kit sendiri.
   Hook native mencari track lewat `track.id` di registry `flutter_webrtc`
@@ -204,8 +204,8 @@ Native (Android Kotlin / iOS Swift)
 ```
 
 Keputusan teknis yang ditetapkan lewat spike (detail di
-[ADR 0001](docs/adr/0001-core-architecture.md), angka di
-[docs/spike-results.md](docs/spike-results.md)):
+[ADR 0001](doc/adr/0001-core-architecture.md), angka di
+[doc/spike-results.md](doc/spike-results.md)):
 
 - Titik pemasangan prosesor frame: API frame processor bawaan `flutter_webrtc` di kedua
   platform, tanpa fork. Android memakai `LocalVideoTrack.addProcessor`, iOS memakai
@@ -248,7 +248,7 @@ mi_virtual_background_kit/
   ios/                               // Swift
   example/                           // app demo mandiri
   test/
-  docs/                              // arsitektur, benchmark, ADR
+  doc/                              // arsitektur, benchmark, ADR
   .github/workflows/                 // CI dan publish otomatis
   README.md  CHANGELOG.md  LICENSE
 ```

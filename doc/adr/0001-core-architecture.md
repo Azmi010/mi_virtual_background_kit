@@ -3,7 +3,7 @@
 Status: Accepted (untuk review)
 Tanggal: 24 Oktober 2026
 Milestone: M0 — spike dan keputusan teknologi
-Angka pendukung: [docs/spike-results.md](../spike-results.md)
+Angka pendukung: [doc/spike-results.md](../spike-results.md)
 
 ## Konteks
 

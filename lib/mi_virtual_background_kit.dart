@@ -18,6 +18,7 @@ export 'src/status/status.dart';
 /// Dart is control plane only: frames never cross into Dart. All processing
 /// happens on-device in native code (GPU compositing + MediaPipe segmentation).
 class MiVirtualBackgroundKit {
+  /// Creates a kit instance. One instance per camera track.
   MiVirtualBackgroundKit();
 
   MiVirtualBackgroundKitPlatform get _platform =>

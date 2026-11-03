@@ -12,6 +12,8 @@ enum FallbackAction {
 
 /// Event emitted when performance drops trigger an automatic fallback (FR-12).
 final class PerformanceFallbackEvent {
+  /// Creates a fallback event. [segmentationWidth] and [targetFps] are
+  /// optional new values after the fallback.
   const PerformanceFallbackEvent({
     required this.action,
     required this.reason,

@@ -12,6 +12,11 @@
 # finite, because rsync copies symlinks as symlinks.
 #
 # Usage: tool/link_example_build.sh [target-dir]
+#
+# iOS/SPM only: a debug APK built while this symlink is in place hung on the
+# splash screen when launched standalone (flutter run was unaffected). Restore
+# a real example/build directory (rm the symlink, mkdir example/build) before
+# building the Android APK. See doc/faq.md #15.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

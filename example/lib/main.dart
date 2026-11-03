@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:mi_virtual_background_kit/mi_virtual_background_kit.dart';
 
+import 'livekit_page.dart';
+
 void main() {
   runApp(const SpikeApp());
 }
@@ -126,6 +128,7 @@ class _SpikePageState extends State<SpikePage> {
         }
       }
 
+      _timer?.cancel();
       _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateHud());
       Future<void>.delayed(const Duration(seconds: 1), () async {
         // bare bool.fromEnvironment does not read the environment (always
@@ -338,6 +341,15 @@ class _SpikePageState extends State<SpikePage> {
     debugPrint('PROD effect: Image fit=${fit.name}');
   }
 
+  Future<void> _applyAssetImage(String assetPath) async {
+    await _kit.setEffect(ImageEffect.asset(assetPath, fit: BackgroundFit.cover));
+    setState(() {
+      _activeEffectName = 'Asset (${assetPath.split('/').last})';
+      _lastFallbackMessage = null;
+    });
+    debugPrint('PROD effect: Asset $assetPath');
+  }
+
   Future<void> _changeRadius(double radius) async {
     setState(() => _blurRadius = radius);
     if (_activeEffectName.startsWith('Blur')) {
@@ -370,6 +382,31 @@ class _SpikePageState extends State<SpikePage> {
     _stream?.dispose();
     _renderer.dispose();
     super.dispose();
+  }
+
+  Future<void> _openLiveKit() async {
+    // One local camera session at a time: flutter_webrtc reuses an open
+    // camera VideoSource for a second getUserMedia, and such shared tracks
+    // never bind the videoSource processor, so addProcessor gets no frames.
+    await _detach();
+    _timer?.cancel();
+    final stream = _stream;
+    _stream = null;
+    stream?.getTracks().forEach((t) => t.stop());
+    await stream?.dispose();
+    if (mounted) {
+      _renderer.srcObject = null;
+      setState(() => _prodAttached = false);
+    }
+
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const LiveKitDemoPage()),
+    );
+
+    // LiveKit page dispose() released the shared native resources; restart a
+    // fresh capture — attach re-applies the last effect automatically.
+    if (mounted) await _start();
   }
 
   Widget _buildControls() {
@@ -429,6 +466,11 @@ class _SpikePageState extends State<SpikePage> {
                 icon: const Icon(Icons.cameraswitch, size: 18),
                 label: const Text('Switch Cam'),
               ),
+              FilledButton.tonalIcon(
+                onPressed: _openLiveKit,
+                icon: const Icon(Icons.video_call, size: 18),
+                label: const Text('LiveKit'),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -463,6 +505,14 @@ class _SpikePageState extends State<SpikePage> {
                 ElevatedButton(
                   onPressed: () => _applyImage(BackgroundFit.contain),
                   child: const Text('Img Contain'),
+                ),
+                ElevatedButton(
+                  onPressed: () => _applyAssetImage('assets/office.jpg'),
+                  child: const Text('Asset Office'),
+                ),
+                ElevatedButton(
+                  onPressed: () => _applyAssetImage('assets/gradient.png'),
+                  child: const Text('Asset Gradient'),
                 ),
               ],
             ),
