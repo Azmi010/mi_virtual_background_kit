@@ -2,8 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'mi_virtual_background_kit_platform_interface.dart';
-import 'src/fallback/fallback.dart';
-import 'src/status/status.dart';
+import '../fallback/fallback.dart';
+import '../status/status.dart';
 
 /// An implementation of [MiVirtualBackgroundKitPlatform] that uses method channels.
 class MethodChannelMiVirtualBackgroundKit
@@ -119,7 +119,7 @@ class MethodChannelMiVirtualBackgroundKit
     }
   }
 
-  // --- Spike T0.4 (temporary) ---
+  // --- Spike T0.4 diagnostics (internal only; not exported in T9.1) ---
 
   @override
   Future<bool> spikeAttach(String trackId) async {

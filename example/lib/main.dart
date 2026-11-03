@@ -6,6 +6,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:mi_virtual_background_kit/mi_virtual_background_kit.dart';
+// ignore: implementation_imports
+import 'package:mi_virtual_background_kit/src/platform/mi_virtual_background_kit_method_channel.dart';
 
 import 'livekit_page.dart';
 
@@ -32,6 +34,9 @@ class SpikePage extends StatefulWidget {
 class _SpikePageState extends State<SpikePage> {
   final _renderer = RTCVideoRenderer();
   final _kit = MiVirtualBackgroundKit();
+  // Spike diagnostics bypass the public kit API (T9.1 keeps the kit surface
+  // to promised methods only), so SPIKE_MODE talks to the channel directly.
+  final _spike = MethodChannelMiVirtualBackgroundKit();
   MediaStream? _stream;
   String _status = 'idle';
   int _frames = 0;
@@ -116,14 +121,14 @@ class _SpikePageState extends State<SpikePage> {
         setState(() => _prodAttached = true);
         debugPrint('PROD attached track=${track.id}');
       } else {
-        final ok = await _kit.spikeAttach(track.id!);
+        final ok = await _spike.spikeAttach(track.id!);
         setState(() => _spiked = ok);
         debugPrint('SPIKE attach=$ok trackId=${track.id}');
 
         if (!Platform.isAndroid) {
           debugPrint('SPIKE gpu path is Android only, skipping');
         } else {
-          final gpuOk = await _kit.spikeEnableGpu(true);
+          final gpuOk = await _spike.spikeEnableGpu(true);
           debugPrint('SPIKE gpuEnabled=$gpuOk');
         }
       }
@@ -136,13 +141,13 @@ class _SpikePageState extends State<SpikePage> {
         if (_benchmarked || prodMode) return;
         _benchmarked = true;
         if (Platform.isAndroid) {
-          final rb = await _kit.spikeReadback();
+          final rb = await _spike.spikeReadback();
           debugPrint('SPIKE readback=$rb');
-          final seg = await _kit.spikeSegmentBenchmark();
+          final seg = await _spike.spikeSegmentBenchmark();
           debugPrint('SPIKE segment=$seg');
           await _runCompositeStages();
         } else {
-          await _kit.spikeBenchmarkReadback();
+          await _spike.spikeBenchmarkReadback();
         }
       });
     } catch (e) {
@@ -153,7 +158,7 @@ class _SpikePageState extends State<SpikePage> {
 
   Future<void> _runCompositeStages() async {
     setState(() => _status = 'composite bench @640...');
-    final r1 = await _kit.spikeCompositeBench();
+    final r1 = await _spike.spikeCompositeBench();
     debugPrint('COMPOSITE640 $r1');
     setState(() => _status = 'composite640 done');
 
@@ -161,7 +166,7 @@ class _SpikePageState extends State<SpikePage> {
     // constraints — flutter_webrtc would otherwise share the old VideoSource.
     _timer?.cancel();
     try {
-      await _kit.spikeDetach(_stream!.getVideoTracks().first.id!);
+      await _spike.spikeDetach(_stream!.getVideoTracks().first.id!);
     } catch (_) {
       // Detach is best-effort; the stream is disposed right after.
     }
@@ -180,11 +185,11 @@ class _SpikePageState extends State<SpikePage> {
     _stream = s2;
     _renderer.srcObject = s2;
     final t2 = s2.getVideoTracks().first;
-    await _kit.spikeAttach(t2.id!);
-    await _kit.spikeEnableGpu(true);
+    await _spike.spikeAttach(t2.id!);
+    await _spike.spikeEnableGpu(true);
 
     setState(() => _status = 'composite bench @720p...');
-    final r2 = await _kit.spikeCompositeBench();
+    final r2 = await _spike.spikeCompositeBench();
     debugPrint('COMPOSITE720 $r2');
     setState(() => _status = 'composite720 done ${r2['w']}x${r2['h']}');
 
@@ -193,10 +198,10 @@ class _SpikePageState extends State<SpikePage> {
 
   Future<void> _updateHud() async {
     if (!_spiked && !_prodAttached) return;
-    final info = await _kit.spikeInfo();
+    final info = await _spike.spikeInfo();
     final n = (info['frames'] as int?) ?? 0;
     final gpu = (Platform.isAndroid && _spiked)
-        ? await _kit.spikeGpuInfo()
+        ? await _spike.spikeGpuInfo()
         : <dynamic, dynamic>{};
     setState(() {
       _fps = _lastCount > 0 ? (n - _lastCount).clamp(0, 120) : n;
@@ -342,7 +347,9 @@ class _SpikePageState extends State<SpikePage> {
   }
 
   Future<void> _applyAssetImage(String assetPath) async {
-    await _kit.setEffect(ImageEffect.asset(assetPath, fit: BackgroundFit.cover));
+    await _kit.setEffect(
+      ImageEffect.asset(assetPath, fit: BackgroundFit.cover),
+    );
     setState(() {
       _activeEffectName = 'Asset (${assetPath.split('/').last})';
       _lastFallbackMessage = null;
@@ -367,7 +374,7 @@ class _SpikePageState extends State<SpikePage> {
 
   Future<void> _toggleTransform() async {
     final next = !_transformOn;
-    await _kit.spikeSetEnabled(next);
+    await _spike.spikeSetEnabled(next);
     setState(() => _transformOn = next);
     debugPrint('SPIKE transformOn=$next');
   }
@@ -400,9 +407,8 @@ class _SpikePageState extends State<SpikePage> {
     }
 
     if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const LiveKitDemoPage()),
-    );
+    await Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => const LiveKitDemoPage()));
 
     // LiveKit page dispose() released the shared native resources; restart a
     // fresh capture — attach re-applies the last effect automatically.

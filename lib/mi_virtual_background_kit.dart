@@ -2,9 +2,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
-import 'mi_virtual_background_kit_platform_interface.dart';
 import 'src/effects/effects.dart';
 import 'src/fallback/fallback.dart';
+import 'src/platform/mi_virtual_background_kit_platform_interface.dart';
 import 'src/quality/quality.dart';
 import 'src/status/status.dart';
 
@@ -163,32 +163,4 @@ class MiVirtualBackgroundKit {
         break;
     }
   }
-
-  // --- Spike T0.4 (temporary, removed with example rewrite in Fase 7) ---
-
-  Future<bool> spikeAttach(String trackId) => _platform.spikeAttach(trackId);
-
-  Future<int> spikeFrameCount() => _platform.spikeFrameCount();
-
-  Future<Map<dynamic, dynamic>> spikeInfo() => _platform.spikeInfo();
-
-  Future<bool> spikeBenchmarkReadback() => _platform.spikeBenchmarkReadback();
-
-  Future<Map<dynamic, dynamic>> spikeSegmentBenchmark() =>
-      _platform.spikeSegmentBenchmark();
-
-  Future<Map<dynamic, dynamic>> spikeCompositeBench() =>
-      _platform.spikeCompositeBench();
-
-  Future<Map<dynamic, dynamic>> spikeReadback() => _platform.spikeReadback();
-
-  Future<bool> spikeEnableGpu(bool enabled) =>
-      _platform.spikeEnableGpu(enabled);
-
-  Future<Map<dynamic, dynamic>> spikeGpuInfo() => _platform.spikeGpuInfo();
-
-  Future<bool> spikeSetEnabled(bool enabled) =>
-      _platform.spikeSetEnabled(enabled);
-
-  Future<bool> spikeDetach(String trackId) => _platform.spikeDetach(trackId);
 }

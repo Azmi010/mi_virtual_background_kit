@@ -152,10 +152,8 @@ class _LiveKitDemoPageState extends State<LiveKitDemoPage> {
                     ),
                     ElevatedButton(
                       onPressed: _attached
-                          ? () => _set(
-                              'Blur (15)',
-                              const BlurEffect(radius: 15),
-                            )
+                          ? () =>
+                                _set('Blur (15)', const BlurEffect(radius: 15))
                           : null,
                       child: const Text('Blur'),
                     ),

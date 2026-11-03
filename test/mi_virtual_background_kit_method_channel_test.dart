@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mi_virtual_background_kit/mi_virtual_background_kit_method_channel.dart';
+import 'package:mi_virtual_background_kit/src/platform/mi_virtual_background_kit_method_channel.dart';
 import 'package:mi_virtual_background_kit/src/fallback/fallback.dart';
 import 'package:mi_virtual_background_kit/src/status/status.dart';
 

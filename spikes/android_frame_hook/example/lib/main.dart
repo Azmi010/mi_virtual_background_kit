@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:mi_virtual_background_kit/mi_virtual_background_kit.dart';
+import 'package:mi_virtual_background_kit/src/platform/mi_virtual_background_kit_method_channel.dart';
 
 void main() {
   runApp(const SpikeApp());
@@ -27,7 +27,7 @@ class SpikePage extends StatefulWidget {
 
 class _SpikePageState extends State<SpikePage> {
   final _renderer = RTCVideoRenderer();
-  final _kit = MiVirtualBackgroundKit();
+  final _spike = MethodChannelMiVirtualBackgroundKit();
   MediaStream? _stream;
   String _status = 'idle';
   int _frames = 0;
@@ -68,7 +68,7 @@ class _SpikePageState extends State<SpikePage> {
       setState(() => _status = 'no track');
       return;
     }
-    final ok = await _kit.spikeAttach(track.id!);
+    final ok = await _spike.spikeAttach(track.id!);
     setState(() {
       _spiked = ok;
       _status = ok ? 'spike attached to ${track.id}' : 'spike attach FAILED';
@@ -78,7 +78,7 @@ class _SpikePageState extends State<SpikePage> {
   Future<void> _detachSpike() async {
     final track = _stream?.getVideoTracks().first;
     if (track == null) return;
-    final ok = await _kit.spikeDetach(track.id!);
+    final ok = await _spike.spikeDetach(track.id!);
     setState(() {
       _spiked = false;
       _status = ok ? 'spike detached' : 'spike detach FAILED';
@@ -86,7 +86,7 @@ class _SpikePageState extends State<SpikePage> {
   }
 
   Future<void> _countFrames() async {
-    final n = await _kit.spikeFrameCount();
+    final n = await _spike.spikeFrameCount();
     setState(() => _frames = n);
   }
 

@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:mi_virtual_background_kit/mi_virtual_background_kit.dart';
-import 'package:mi_virtual_background_kit/mi_virtual_background_kit_platform_interface.dart';
+import 'package:mi_virtual_background_kit/src/platform/mi_virtual_background_kit_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 class MockPlatform
@@ -443,29 +443,6 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(events, [sample]);
       await sub.cancel();
-    });
-  });
-
-  group('spike delegates (temporary)', () {
-    test('each spike method hits platform', () async {
-      await kit.spikeAttach('t');
-      await kit.spikeFrameCount();
-      await kit.spikeInfo();
-      await kit.spikeBenchmarkReadback();
-      await kit.spikeSegmentBenchmark();
-      await kit.spikeCompositeBench();
-      await kit.spikeReadback();
-      await kit.spikeEnableGpu(true);
-      await kit.spikeGpuInfo();
-      await kit.spikeSetEnabled(true);
-      await kit.spikeDetach('t');
-      expect(
-        mock.calls,
-        containsAll(<String>[
-          'spikeAttach:t',
-          'spikeDetach:t',
-        ]),
-      );
     });
   });
 }

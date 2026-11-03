@@ -1,8 +1,8 @@
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'mi_virtual_background_kit_method_channel.dart';
-import 'src/fallback/fallback.dart';
-import 'src/status/status.dart';
+import '../fallback/fallback.dart';
+import '../status/status.dart';
 
 /// Platform interface that implementations of mi_virtual_background_kit must
 /// extend (federated-plugin contract).
@@ -70,61 +70,61 @@ abstract class MiVirtualBackgroundKitPlatform extends PlatformInterface {
     throw UnimplementedError('fallbackStream has not been implemented.');
   }
 
-  // --- Spike T0.4 (temporary, removed in T9.1) ---
+  // --- Spike T0.4 diagnostics (internal only; not exported in T9.1) ---
 
-  /// Temporary spike API; removed before publish.
+  /// Spike diagnostic; internal API, not part of the public surface.
   Future<bool> spikeAttach(String trackId) {
     throw UnimplementedError('spikeAttach() has not been implemented.');
   }
 
-  /// Temporary spike API; removed before publish.
+  /// Spike diagnostic; internal API, not part of the public surface.
   Future<int> spikeFrameCount() {
     throw UnimplementedError('spikeFrameCount() has not been implemented.');
   }
 
-  /// Temporary spike API; removed before publish.
+  /// Spike diagnostic; internal API, not part of the public surface.
   Future<Map<dynamic, dynamic>> spikeInfo() {
     throw UnimplementedError('spikeInfo() has not been implemented.');
   }
 
-  /// Temporary spike API; removed before publish.
+  /// Spike diagnostic; internal API, not part of the public surface.
   Future<bool> spikeBenchmarkReadback() {
     throw UnimplementedError(
         'spikeBenchmarkReadback() has not been implemented.');
   }
 
-  /// Temporary spike API; removed before publish.
+  /// Spike diagnostic; internal API, not part of the public surface.
   Future<Map<dynamic, dynamic>> spikeSegmentBenchmark() {
     throw UnimplementedError(
         'spikeSegmentBenchmark() has not been implemented.');
   }
 
-  /// Temporary spike API; removed before publish.
+  /// Spike diagnostic; internal API, not part of the public surface.
   Future<Map<dynamic, dynamic>> spikeCompositeBench() {
     throw UnimplementedError('spikeCompositeBench() has not been implemented.');
   }
 
-  /// Temporary spike API; removed before publish.
+  /// Spike diagnostic; internal API, not part of the public surface.
   Future<Map<dynamic, dynamic>> spikeReadback() {
     throw UnimplementedError('spikeReadback() has not been implemented.');
   }
 
-  /// Temporary spike API; removed before publish.
+  /// Spike diagnostic; internal API, not part of the public surface.
   Future<bool> spikeEnableGpu(bool enabled) {
     throw UnimplementedError('spikeEnableGpu() has not been implemented.');
   }
 
-  /// Temporary spike API; removed before publish.
+  /// Spike diagnostic; internal API, not part of the public surface.
   Future<Map<dynamic, dynamic>> spikeGpuInfo() {
     throw UnimplementedError('spikeGpuInfo() has not been implemented.');
   }
 
-  /// Temporary spike API; removed before publish.
+  /// Spike diagnostic; internal API, not part of the public surface.
   Future<bool> spikeSetEnabled(bool enabled) {
     throw UnimplementedError('spikeSetEnabled() has not been implemented.');
   }
 
-  /// Temporary spike API; removed before publish.
+  /// Spike diagnostic; internal API, not part of the public surface.
   Future<bool> spikeDetach(String trackId) {
     throw UnimplementedError('spikeDetach() has not been implemented.');
   }

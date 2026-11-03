@@ -147,7 +147,8 @@ Repo dibuat di awal fase ini supaya spike dan ADR punya tempat. Kode spike diker
 
 ## Fase 9 — Kesiapan publish (M5)
 
-- [ ] T9.1 Audit API publik: pindahkan semua yang belum pasti ke `lib/src/` dan batasi export. Selesai: hanya API yang dijanjikan yang terekspos.
+- [x] T9.1 Audit API publik: pindahkan semua yang belum pasti ke `lib/src/` dan batasi export. Selesai: hanya API yang dijanjikan yang terekspos.
+  - Hasil: `mi_virtual_background_kit_platform_interface.dart` dan `mi_virtual_background_kit_method_channel.dart` dipindah ke `lib/src/platform/` (import di kit, test, example diperbarui). 11 method spike dihapus dari `MiVirtualBackgroundKit` (publik) — spike diagnostic tetap ada di platform interface/method channel internal untuk example (`SPIKE_MODE`, HUD, bench). Export publik hanya 4 file (effects, fallback, quality, status) + class kit. Verifikasi: `flutter analyze` root+example 0 issue, format exit 0, test 75/75, `dart doc` (dartdoc 9.0.11) 0 warning 0 error, 1 public library.
 - [ ] T9.2 Jalankan `flutter analyze`, `dart format`, `flutter test`, dan `dart pub publish --dry-run`. Selesai: semuanya bersih.
 - [ ] T9.3 Uji sebagai git dependency di proyek lain yang bersih. Selesai: package terpasang dan berjalan tanpa bergantung pada folder lokal mana pun.
 - [ ] T9.4 Minta satu atau dua developer lain mencoba dari README saja. Selesai: temuan kebingungan diperbaiki di dokumentasi.
