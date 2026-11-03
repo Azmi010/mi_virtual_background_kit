@@ -110,11 +110,16 @@ Repo dibuat di awal fase ini supaya spike dan ADR punya tempat. Kode spike diker
 
 ## Fase 6 — Pengujian dan benchmark (M4)
 
-- [ ] T6.1 Susun test matrix: minimal tiga kelas perangkat per platform (low, mid, high). Selesai: daftar perangkat dan hasil per skenario.
-- [ ] T6.2 Benchmark fps, latency per frame, CPU, memori, dan baterai selama sesi 10 menit. Selesai: tabel hasil tercatat di `docs/benchmark.md`.
-- [ ] T6.3 Integration test pada example (attach, ganti efek, detach) di CI atau perangkat uji. Selesai: skenario utama otomatis terverifikasi.
-- [ ] T6.4 Uji di batas bawah dan atas rentang versi `flutter_webrtc`. Selesai: kedua batas lolos build dan uji dasar.
-- [ ] T6.5 Uji soak: sesi panjang (30+ menit) dan attach/detach berulang. Selesai: tidak ada crash atau kebocoran.
+- [x] T6.1 Susun test matrix: minimal tiga kelas perangkat per platform (low, mid, high). Selesai: daftar perangkat dan hasil per skenario.
+  - Hasil: [docs/test-matrix.md](docs/test-matrix.md) — 2 device fisik: A1 Android low (`RR8T601FP0R`, USB) + I1 iOS high (iPhone 15, UDID `00008120-0016195A0CC20032`, wireless). 20 skenario S1–S20. Kelas mid tidak ada hardware → tidak diukur, dicatat sebagai batasan vs PRD §12 (3 kelas). Emulator tidak dipakai. Kolom hasil diisi saat T6.2–T6.5.
+- [x] T6.2 Benchmark fps, latency per frame, CPU, memori, dan baterai selama sesi 10 menit. Selesai: tabel hasil tercatat di `docs/benchmark.md`.
+  - Hasil: [docs/benchmark.md](docs/benchmark.md) — 2 device (A1 SM-A135F USB, I1 iPhone 15 USB), 4 efek × 10 mnt. FPS mean: A1 28.4–30.0, I1 30.0 semua efek; no fallback event. Mem A1 stabil ~285–290 MB. Raw: `docs/bench-raw/` (70 file). **Gap dicatat:** baterai (terus USB charge), CPU/mem iOS, latensi end-to-end (hanya spike), kelas mid tidak ada.
+- [x] T6.3 Integration test pada example (attach, ganti efek, detach) di CI atau perangkat uji. Selesai: skenario utama otomatis terverifikasi.
+  - Hasil: `example/integration_test/kit_test.dart` — 4 test: `isSupported`, attach→active→switch 5 efek→detach idempoten→re-attach, validasi input, dispose idempoten. **Lulus 4/4 di A1 (SM-A135F)** `flutter test integration_test -d RR8T601FP0R`. CI default tidak dipasang (runner tanpa kamera); command: `flutter test integration_test -d <device>`.
+- [x] T6.4 Uji di batas bawah dan atas rentang versi `flutter_webrtc`. Selesai: kedua batas lolos build dan uji dasar.
+  - Hasil: pin eksak di root + example, lalu restore `^1.6.2`. **Lower `1.6.2`**: analyze 0, unit test 76/76, `flutter build apk --debug` OK. **Upper `1.6.3`** (latest dalam rentang): analyze 0, unit test 76/76, build APK OK. Spike sebelumnya menguji `1.6.2`–`1.6.2+hotfix.4`; sekarang rentang penuh `1.6.2`–`1.6.3` terverifikasi build+test dasar.
+- [x] T6.5 Uji soak: sesi panjang (30+ menit) dan attach/detach berulang. Selesai: tidak ada crash atau kebocoran.
+  - Hasil: **A1 + I1 lulus**. A1: soak 30 mnt `tool/soak.sh` — PID stabil, memori plateau 250–258 MB, 0 crash/fallback, ~30 fps; loop 100× 10 dtk. I1: soak 30 mnt `flutter run` USB + monitor — ALIVE semua sampel, fps 30 seragam, 0 event, `#54750` frame; loop 100× 3 dtk. Detail di [docs/benchmark.md](docs/benchmark.md). Gap: memori soak iOS tidak terukur (butuh Instruments).
 
 ## Fase 7 — Example app (M5)
 
