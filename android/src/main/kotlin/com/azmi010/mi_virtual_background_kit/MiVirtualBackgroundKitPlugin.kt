@@ -8,7 +8,6 @@ import com.azmi010.mi_virtual_background_kit.processor.detachFrameProcessor
 import com.azmi010.mi_virtual_background_kit.segmentation.Segmenter
 import com.azmi010.mi_virtual_background_kit.spike.SpikeFrameProcessor
 import com.azmi010.mi_virtual_background_kit.spike.SpikeGpuCompositor
-import com.azmi010.mi_virtual_background_kit.spike.SpikeMLKitBenchmark
 import com.azmi010.mi_virtual_background_kit.spike.SpikeMaskOverlay
 import com.azmi010.mi_virtual_background_kit.spike.SpikeSegmenterBenchmark
 import com.azmi010.mi_virtual_background_kit.spike.SpikeHook
@@ -418,59 +417,23 @@ class MiVirtualBackgroundKitPlugin :
                 android.util.Log.i("MiVBGSpike", "scaled MP $mpScaled")
                 android.util.Log.i("MiVBGSpike", "MP timings=$mpTimings overlay=$mpOverlay")
 
-                // ML Kit delivers its Task listeners on the main looper, so the
-                // wait must happen on a background thread or it deadlocks the
-                // platform thread and the whole app stops ticking.
-                Thread {
-                    val mlBench = SpikeMLKitBenchmark()
-                    val mlStatus = mlBench.setup()
-                    val mlScaled = scales.map { w ->
-                        val r = mlBench.runScaled(bitmap, w)
-                        "w=$w t=${r.latencyMicros}us mask=${r.maskWidth}x${r.maskHeight}"
-                    }
-                    val mlTimings = mlBench.runRepeated(bitmap, 3)
-                    val ml = mlBench.run(bitmap)
-                    val mlOverlay = try {
-                        val mask = mlBench.lastMask
-                        if (mask == null) {
-                            "no mask"
-                        } else {
-                            SpikeMaskOverlay.saveFloat(
-                                bitmap, mask.buffer, mask.width, mask.height,
-                                java.io.File(overlayDir, "overlay_ml_640.png"),
-                            )
-                        }
-                    } catch (t: Throwable) {
-                        "failed: $t"
-                    }
-                    mlBench.release()
-                    android.util.Log.i("MiVBGSpike", "scaled ML $mlScaled")
-                    android.util.Log.i("MiVBGSpike", "ML timings=$mlTimings overlay=$mlOverlay")
-                    bitmap.recycle()
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        result.success(
-                            mapOf(
-                                "mpSetup" to mpStatus,
-                                "mpMicros" to mp.latencyMicros,
-                                "mpTimings" to mpTimings,
-                                "mpMask" to "${mp.maskWidth}x${mp.maskHeight}",
-                                "mpError" to (mp.error ?: ""),
-                                "mpOverlay" to mpOverlay,
-                                "mlSetup" to mlStatus,
-                                "mlMicros" to ml.latencyMicros,
-                                "mlTimings" to mlTimings,
-                                "mlMask" to "${ml.maskWidth}x${ml.maskHeight}",
-                                "mlError" to (ml.error ?: ""),
-                                "mlOverlay" to mlOverlay,
-                                "mpScaled" to mpScaled,
-                                "mlScaled" to mlScaled,
-                                "readbackMicros" to gpu.readbackMicros,
-                                "width" to gpu.readbackWidth,
-                                "height" to gpu.readbackHeight,
-                            ),
-                        )
-                    }
-                }.start()
+                // ML Kit spike removed in T9.5: its Terms of Service license
+                // conflicts with redistribution inside this MIT package.
+                bitmap.recycle()
+                result.success(
+                    mapOf(
+                        "mpSetup" to mpStatus,
+                        "mpMicros" to mp.latencyMicros,
+                        "mpTimings" to mpTimings,
+                        "mpMask" to "${mp.maskWidth}x${mp.maskHeight}",
+                        "mpError" to (mp.error ?: ""),
+                        "mpOverlay" to mpOverlay,
+                        "mpScaled" to mpScaled,
+                        "readbackMicros" to gpu.readbackMicros,
+                        "width" to gpu.readbackWidth,
+                        "height" to gpu.readbackHeight,
+                    ),
+                )
             }
             "spikeCompositeBench" -> {
                 val p = spikeProcessor

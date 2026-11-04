@@ -7,7 +7,7 @@ import java.nio.ByteBuffer
 
 /**
  * Spike T0.6: dump a segmentation mask as a PNG overlay for visual edge
- * quality comparison between engines.
+ * quality comparison.
  *
  * Person pixels are tinted green at 50% over the source frame so edge
  * behaviour (halo, holes, temporal noise) can be judged side by side.
@@ -67,28 +67,6 @@ object SpikeMaskOverlay {
             else -> throw IllegalArgumentException(
                 "unexpected mask capacity $cap for ${maskWidth}x$maskHeight",
             )
-        }
-    }
-
-    /**
-     * Saves an overlay for an ML Kit mask (FLOAT32 probabilities,
-     * capacity >= w*h*4).
-     */
-    fun saveFloat(
-        source: Bitmap,
-        maskBuffer: ByteBuffer,
-        maskWidth: Int,
-        maskHeight: Int,
-        outFile: File,
-        threshold: Float = 0.5f,
-    ): String {
-        require(maskWidth > 0 && maskHeight > 0) { "mask has no size" }
-        require(maskBuffer.capacity() >= maskWidth * maskHeight * 4) {
-            "mask capacity ${maskBuffer.capacity()} too small for ${maskWidth}x$maskHeight"
-        }
-        val floats = maskBuffer.asFloatBuffer()
-        return blendAndSave(source, maskWidth, maskHeight, outFile) { i ->
-            floats.get(i) >= threshold
         }
     }
 
