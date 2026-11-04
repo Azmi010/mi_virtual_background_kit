@@ -160,8 +160,10 @@ Repo dibuat di awal fase ini supaya spike dan ADR punya tempat. Kode spike diker
 
 ## Fase 10 — Rilis dan pasca rilis (M6)
 
-- [ ] T10.1 Siapkan verified publisher (opsional, perlu domain) dan akun publisher. Selesai: publisher siap atau diputuskan ditunda.
-- [ ] T10.2 Publish `0.1.0` dengan `dart pub publish`. Perhatian: tidak dapat dibatalkan. Selesai: package tampil di pub.dev.
+- [x] T10.1 Siapkan verified publisher (opsional, perlu domain) dan akun publisher. Selesai: publisher siap atau diputuskan ditunda.
+  - Hasil: verified publisher `DITUNDA`.
+- [x] T10.2 Publish `0.1.0` dengan `dart pub publish`. Perhatian: tidak dapat dibatalkan. Selesai: package tampil di pub.dev.
+  - Hasil: live di pub.dev 4 Nov 2026 (`published 2026-11-04T04:30Z`), `dart pub publish --dry-run` 0 warning 2 MB sebelum publish, uploader = akun pribadi (publisher ditunda sesuai T10.1).
 - [ ] T10.3 Aktifkan automated publishing dari GitHub Actions dengan tag `v*`. Selesai: tag percobaan berhasil memicu workflow.
 - [ ] T10.4 Tambahkan badge (pub version, CI) ke README. Selesai: badge tampil benar.
 - [ ] T10.5 Pengumuman: r/FlutterDev, komunitas Flutter Indonesia, X/LinkedIn, dan artikel tentang alasan dan cara kerja. Selesai: minimal tiga kanal terisi.
