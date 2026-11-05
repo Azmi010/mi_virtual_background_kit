@@ -53,8 +53,5 @@ jobs:
       - run: tool/link_example_build.sh
       - run: flutter pub get
         working-directory: example
-      # Package.swift path-deps need ios/flutter_webrtc-<ver> and ios/FlutterFramework
-      # (gitignored local symlinks); recreate them from ephemeral .packages.
-      - run: tool/link_spm_siblings.sh
       - run: flutter build ios --debug --no-codesign
         working-directory: example

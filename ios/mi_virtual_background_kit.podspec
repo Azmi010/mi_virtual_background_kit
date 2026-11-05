@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'mi_virtual_background_kit'
-  s.version          = '0.1.0'
+  s.version          = '0.1.1'
   s.summary          = 'Real-time virtual background effects for flutter_webrtc camera tracks.'
   s.description      = <<-DESC
 Applies blur, image, and solid color background effects to local camera tracks

@@ -12,7 +12,10 @@ let package = Package(
         .library(name: "mi-virtual-background-kit", targets: ["mi_virtual_background_kit"])
     ],
     dependencies: [
-        .package(name: "flutter_webrtc", path: "../flutter_webrtc-1.6.2+hotfix.4"),
+        // Versionless on purpose: the Flutter tool rewrites this to the
+        // resolved "flutter_webrtc-<version>" symlink (Flutter >= 3.47.2).
+        // A hardcoded version breaks consumers that resolve another version.
+        .package(name: "flutter_webrtc", path: "../flutter_webrtc"),
         .package(name: "FlutterFramework", path: "../FlutterFramework"),
         .package(url: "https://github.com/google-ai-edge/mediapipe", branch: "master")
     ],

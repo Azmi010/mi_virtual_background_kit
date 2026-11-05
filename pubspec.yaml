@@ -2,7 +2,7 @@ name: mi_virtual_background_kit
 description: >-
   Real-time virtual background (blur, image, solid color) for flutter_webrtc
   camera tracks. Fully on-device, no network, no telemetry.
-version: 0.1.0
+version: 0.1.1
 repository: https://github.com/Azmi010/mi_virtual_background_kit
 issue_tracker: https://github.com/Azmi010/mi_virtual_background_kit/issues
 topics:

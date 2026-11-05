@@ -1,3 +1,11 @@
+## 0.1.1
+
+* Fix iOS Swift Package Manager build failure in consumer apps that resolve a
+  `flutter_webrtc` version other than `1.6.2+hotfix.4`
+  (issue #1): `Package.swift` now declares the dependency as the versionless
+  `../flutter_webrtc` path, which the Flutter tool (>= 3.47.2) rewrites to the
+  app's resolved `flutter_webrtc-<version>` before building.
+
 ## 0.1.0
 
 * Initial release.
