@@ -5,6 +5,15 @@
   (issue #1): `Package.swift` now declares the dependency as the versionless
   `../flutter_webrtc` path, which the Flutter tool (>= 3.47.2) rewrites to the
   app's resolved `flutter_webrtc-<version>` before building.
+* Android blur now matches iOS strength: the single 3x3 pass (which offset
+  samples by only ~`radius/25` texels, barely visible even at the maximum
+  radius) is replaced by a progressive separable Gaussian on a half-res chain
+  whose sigma equals the `radius` in pixels — the same semantics as iOS
+  `CIImage.applyingGaussianBlur(sigma:)`. Verified side-by-side on SM-A135F
+  and iPhone 15 at radius 5 / 20 / 50.
+* Fix displaced blurred copy of the person appearing behind them on Android
+  (blur effect only): the composite sampled the blur chain with transform-baked
+  camera coordinates instead of the chain's own texture coordinates.
 
 ## 0.1.0
 

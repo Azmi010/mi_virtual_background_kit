@@ -41,7 +41,9 @@ interface FrameCompositor {
  *
  * Runs on the libwebrtc capture thread (which owns the shared EGL context).
  * Supports:
- * - 3x3 box blur (T3.3)
+ * - Progressive separable Gaussian blur: sigma equals the API radius in pixels,
+ *   matching the iOS Core Image implementation (the old single 3x3 pass only
+ *   offset samples by ~radius/25 texels, far too weak)
  * - Solid color background (T3.4, FR-03)
  * - Image background with cover and contain fits in portrait & landscape (T3.4, FR-02)
  */
@@ -96,8 +98,7 @@ class GpuCompositor : FrameCompositor {
     private var blOesUCamTransform = 0
     private var blOesUCamTex = 0
     private var blOesUMaskTex = 0
-    private var blOesUTexelSize = 0
-    private var blOesUTexelScale = 0
+    private var blOesUBlurTex = 0
     private var blOesUEdgeSmoothing = 0
 
     // Blur composite program (2D)
@@ -107,9 +108,28 @@ class GpuCompositor : FrameCompositor {
     private var bl2dUCamTransform = 0
     private var bl2dUCamTex = 0
     private var bl2dUMaskTex = 0
-    private var bl2dUTexelSize = 0
-    private var bl2dUTexelScale = 0
+    private var bl2dUBlurTex = 0
     private var bl2dUEdgeSmoothing = 0
+
+    // Downsample program: renders the camera (transform baked) into the blur chain
+    private var downsampleProgramOes = 0
+    private var dsOesAPos = 0
+    private var dsOesATex = 0
+    private var dsOesUCamTransform = 0
+    private var dsOesUCamTex = 0
+
+    private var downsampleProgram2D = 0
+    private var ds2dAPos = 0
+    private var ds2dATex = 0
+    private var ds2dUCamTransform = 0
+    private var ds2dUCamTex = 0
+
+    // Separable blur pass program (ping-pong H/V over the blur chain, plain 2D)
+    private var blurPassProgram = 0
+    private var bpAPos = 0
+    private var bpATex = 0
+    private var bpUSrcTex = 0
+    private var bpUStep = 0
 
     // Color composite program (OES & 2D)
     private var colorProgramOes = 0
@@ -161,6 +181,14 @@ class GpuCompositor : FrameCompositor {
     private var readbackTexture = 0
     private var readbackFboWidth = 0
     private var readbackFboHeight = 0
+
+    // Half-res blur chain (ping-pong A/B)
+    private var blurFboA = 0
+    private var blurFboB = 0
+    private var blurTexA = 0
+    private var blurTexB = 0
+    private var blurChainWidth = 0
+    private var blurChainHeight = 0
 
     // Mask texture
     private var maskTextureId = 0
@@ -409,12 +437,41 @@ class GpuCompositor : FrameCompositor {
             createOutput(width, height)
         }
 
-        ensureBuffers()
+        val chainW = maxOf(2, width / 2)
+        val chainH = maxOf(2, height / 2)
+        ensureBlurChain(chainW, chainH)
+        val texMatrix = convertMatrix(buffer.transformMatrix, camMatrixArray)
+
+        // 1. Downsample the camera into the blur chain with the transform baked
+        //    in, so chain pixels share the composite's vCamTex coordinate space.
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, blurFboA)
+        GLES20.glViewport(0, 0, chainW, chainH)
+        if (isOes) {
+            if (downsampleProgramOes == 0) buildDownsampleProgramOes()
+            drawDownsampleQuad(
+                dsOesAPos, dsOesATex, dsOesUCamTransform, dsOesUCamTex,
+                target, buffer.textureId, texMatrix,
+            )
+        } else {
+            if (downsampleProgram2D == 0) buildDownsampleProgram2D()
+            drawDownsampleQuad(
+                ds2dAPos, ds2dATex, ds2dUCamTransform, ds2dUCamTex,
+                target, buffer.textureId, texMatrix,
+            )
+        }
+
+        // 2. Progressive separable passes (steps s, 2s, 4s) approximate a
+        //    Gaussian whose sigma equals [radius] full-resolution pixels —
+        //    the same semantics as CIImage.applyingGaussianBlur(sigma:) on iOS.
+        if (blurPassProgram == 0) buildBlurPassProgram()
+        for (step in progressiveBlurSteps(radius)) {
+            drawBlurPass(blurFboB, blurTexA, step, horizontal = true, chainW, chainH)
+            drawBlurPass(blurFboA, blurTexB, step, horizontal = false, chainW, chainH)
+        }
+
+        // 3. Composite: blurred background behind the person via the mask.
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo)
         GLES20.glViewport(0, 0, width, height)
-
-        val texelScale = radius / 25.0f
-        val texMatrix = convertMatrix(buffer.transformMatrix, camMatrixArray)
 
         if (isOes) {
             if (blurProgramOes == 0) buildBlurProgramOes()
@@ -425,16 +482,13 @@ class GpuCompositor : FrameCompositor {
                 blOesUCamTransform,
                 blOesUCamTex,
                 blOesUMaskTex,
-                blOesUTexelSize,
-                blOesUTexelScale,
+                blOesUBlurTex,
                 blOesUEdgeSmoothing,
                 target,
                 buffer.textureId,
                 maskTextureId,
+                blurTexA,
                 texMatrix,
-                1.0f / width,
-                1.0f / height,
-                texelScale,
             )
         } else {
             if (blurProgram2D == 0) buildBlurProgram2D()
@@ -445,16 +499,13 @@ class GpuCompositor : FrameCompositor {
                 bl2dUCamTransform,
                 bl2dUCamTex,
                 bl2dUMaskTex,
-                bl2dUTexelSize,
-                bl2dUTexelScale,
+                bl2dUBlurTex,
                 bl2dUEdgeSmoothing,
                 target,
                 buffer.textureId,
                 maskTextureId,
+                blurTexA,
                 texMatrix,
-                1.0f / width,
-                1.0f / height,
-                texelScale,
             )
         }
 
@@ -804,16 +855,13 @@ class GpuCompositor : FrameCompositor {
         uCamTransform: Int,
         uCamTex: Int,
         uMaskTex: Int,
-        uTexelSize: Int,
-        uTexelScale: Int,
+        uBlurTex: Int,
         uEdgeSmoothing: Int,
         target: Int,
         camTextureId: Int,
         maskTextureId: Int,
+        blurTextureId: Int,
         texMatrix: FloatArray,
-        texelWidth: Float,
-        texelHeight: Float,
-        texelScale: Float,
     ) {
         ensureBuffers()
         GLES20.glUseProgram(program)
@@ -826,9 +874,11 @@ class GpuCompositor : FrameCompositor {
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, maskTextureId)
         GLES20.glUniform1i(uMaskTex, 1)
 
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE2)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, blurTextureId)
+        GLES20.glUniform1i(uBlurTex, 2)
+
         GLES20.glUniformMatrix4fv(uCamTransform, 1, false, texMatrix, 0)
-        GLES20.glUniform2f(uTexelSize, texelWidth, texelHeight)
-        GLES20.glUniform1f(uTexelScale, texelScale)
         GLES20.glUniform1f(uEdgeSmoothing, edgeSmoothing)
 
         vertexBuffer?.position(0)
@@ -843,10 +893,151 @@ class GpuCompositor : FrameCompositor {
         GLES20.glDisableVertexAttribArray(aPos)
         GLES20.glDisableVertexAttribArray(aTex)
 
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE2)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(target, 0)
+    }
+
+    /**
+     * Lazily (re)creates the half-res blur chain textures and FBOs. Only
+     * reallocates when the frame size changes (see T3.5: no per-frame allocation).
+     */
+    private fun ensureBlurChain(width: Int, height: Int) {
+        if (blurChainWidth == width && blurChainHeight == height &&
+            blurFboA != 0 && blurFboB != 0 && blurTexA != 0 && blurTexB != 0
+        ) {
+            return
+        }
+        deleteBlurChain()
+
+        blurTexA = createBlurTexture(width, height)
+        blurTexB = createBlurTexture(width, height)
+        blurFboA = createBlurFbo(blurTexA)
+        blurFboB = createBlurFbo(blurTexB)
+        blurChainWidth = width
+        blurChainHeight = height
+    }
+
+    private fun createBlurTexture(width: Int, height: Int): Int {
+        val textures = IntArray(1)
+        GLES20.glGenTextures(1, textures, 0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textures[0])
+        GLES20.glTexImage2D(
+            GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, width, height, 0,
+            GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null,
+        )
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
+        return textures[0]
+    }
+
+    private fun createBlurFbo(textureId: Int): Int {
+        val buffers = IntArray(1)
+        GLES20.glGenFramebuffers(1, buffers, 0)
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, buffers[0])
+        GLES20.glFramebufferTexture2D(
+            GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+            GLES20.GL_TEXTURE_2D, textureId, 0,
+        )
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+        return buffers[0]
+    }
+
+    private fun deleteBlurChain() {
+        if (blurFboA != 0) {
+            GLES20.glDeleteFramebuffers(1, intArrayOf(blurFboA), 0)
+            blurFboA = 0
+        }
+        if (blurFboB != 0) {
+            GLES20.glDeleteFramebuffers(1, intArrayOf(blurFboB), 0)
+            blurFboB = 0
+        }
+        if (blurTexA != 0) {
+            GLES20.glDeleteTextures(1, intArrayOf(blurTexA), 0)
+            blurTexA = 0
+        }
+        if (blurTexB != 0) {
+            GLES20.glDeleteTextures(1, intArrayOf(blurTexB), 0)
+            blurTexB = 0
+        }
+        blurChainWidth = 0
+        blurChainHeight = 0
+    }
+
+    private fun drawDownsampleQuad(
+        aPos: Int,
+        aTex: Int,
+        uCamTransform: Int,
+        uCamTex: Int,
+        target: Int,
+        camTextureId: Int,
+        texMatrix: FloatArray,
+    ) {
+        ensureBuffers()
+        GLES20.glUseProgram(if (target == GLES11Ext.GL_TEXTURE_EXTERNAL_OES) downsampleProgramOes else downsampleProgram2D)
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(target, camTextureId)
+        GLES20.glUniform1i(uCamTex, 0)
+        GLES20.glUniformMatrix4fv(uCamTransform, 1, false, texMatrix, 0)
+
+        vertexBuffer?.position(0)
+        GLES20.glEnableVertexAttribArray(aPos)
+        GLES20.glVertexAttribPointer(aPos, 2, GLES20.GL_FLOAT, false, 0, vertexBuffer)
+
+        texCoordBuffer?.position(0)
+        GLES20.glEnableVertexAttribArray(aTex)
+        GLES20.glVertexAttribPointer(aTex, 2, GLES20.GL_FLOAT, false, 0, texCoordBuffer)
+
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        GLES20.glDisableVertexAttribArray(aPos)
+        GLES20.glDisableVertexAttribArray(aTex)
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(target, 0)
+    }
+
+    private fun drawBlurPass(
+        fboTarget: Int,
+        srcTexture: Int,
+        stepTexels: Float,
+        horizontal: Boolean,
+        chainWidth: Int,
+        chainHeight: Int,
+    ) {
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fboTarget)
+        GLES20.glViewport(0, 0, chainWidth, chainHeight)
+        GLES20.glUseProgram(blurPassProgram)
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, srcTexture)
+        GLES20.glUniform1i(bpUSrcTex, 0)
+        if (horizontal) {
+            GLES20.glUniform2f(bpUStep, stepTexels / chainWidth, 0f)
+        } else {
+            GLES20.glUniform2f(bpUStep, 0f, stepTexels / chainHeight)
+        }
+
+        vertexBuffer?.position(0)
+        GLES20.glEnableVertexAttribArray(bpAPos)
+        GLES20.glVertexAttribPointer(bpAPos, 2, GLES20.GL_FLOAT, false, 0, vertexBuffer)
+
+        texCoordBuffer?.position(0)
+        GLES20.glEnableVertexAttribArray(bpATex)
+        GLES20.glVertexAttribPointer(bpATex, 2, GLES20.GL_FLOAT, false, 0, texCoordBuffer)
+
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        GLES20.glDisableVertexAttribArray(bpAPos)
+        GLES20.glDisableVertexAttribArray(bpATex)
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
     }
 
     private fun drawColorQuad(
@@ -1053,8 +1244,7 @@ class GpuCompositor : FrameCompositor {
             varying vec2 vMaskTex;
             uniform samplerExternalOES uCamTex;
             uniform sampler2D uMaskTex;
-            uniform vec2 uTexelSize;
-            uniform float uTexelScale;
+            uniform sampler2D uBlurTex;
             uniform float uEdgeSmoothing;
 
             void main() {
@@ -1068,19 +1258,10 @@ class GpuCompositor : FrameCompositor {
                     personAlpha = smoothstep(low, high, rawAlpha);
                 }
                 vec4 original = texture2D(uCamTex, vCamTex);
-
-                vec4 blurSum = vec4(0.0);
-                vec2 step = uTexelSize * uTexelScale;
-                for (int dy = -1; dy <= 1; dy++) {
-                    for (int dx = -1; dx <= 1; dx++) {
-                        float w = 1.0;
-                        if (dx == 0 && dy == 0) w = 4.0;
-                        else if (dx == 0 || dy == 0) w = 2.0;
-                        blurSum += texture2D(uCamTex, vCamTex + vec2(float(dx), float(dy)) * step) * w;
-                    }
-                }
-                vec4 blurred = blurSum / 16.0;
-
+                // Chain texels are addressed by aTex (vMaskTex): the downsample
+                // pass baked the transform into the chain content, so sampling
+                // it with vCamTex would displace the blurred copy of the person.
+                vec4 blurred = texture2D(uBlurTex, vMaskTex);
                 gl_FragColor = mix(blurred, original, personAlpha);
             }
         """.trimIndent()
@@ -1091,8 +1272,7 @@ class GpuCompositor : FrameCompositor {
         blOesUCamTransform = GLES20.glGetUniformLocation(p, "uCamTransform")
         blOesUCamTex = GLES20.glGetUniformLocation(p, "uCamTex")
         blOesUMaskTex = GLES20.glGetUniformLocation(p, "uMaskTex")
-        blOesUTexelSize = GLES20.glGetUniformLocation(p, "uTexelSize")
-        blOesUTexelScale = GLES20.glGetUniformLocation(p, "uTexelScale")
+        blOesUBlurTex = GLES20.glGetUniformLocation(p, "uBlurTex")
         blOesUEdgeSmoothing = GLES20.glGetUniformLocation(p, "uEdgeSmoothing")
     }
 
@@ -1115,8 +1295,7 @@ class GpuCompositor : FrameCompositor {
             varying vec2 vMaskTex;
             uniform sampler2D uCamTex;
             uniform sampler2D uMaskTex;
-            uniform vec2 uTexelSize;
-            uniform float uTexelScale;
+            uniform sampler2D uBlurTex;
             uniform float uEdgeSmoothing;
 
             void main() {
@@ -1130,19 +1309,10 @@ class GpuCompositor : FrameCompositor {
                     personAlpha = smoothstep(low, high, rawAlpha);
                 }
                 vec4 original = texture2D(uCamTex, vCamTex);
-
-                vec4 blurSum = vec4(0.0);
-                vec2 step = uTexelSize * uTexelScale;
-                for (int dy = -1; dy <= 1; dy++) {
-                    for (int dx = -1; dx <= 1; dx++) {
-                        float w = 1.0;
-                        if (dx == 0 && dy == 0) w = 4.0;
-                        else if (dx == 0 || dy == 0) w = 2.0;
-                        blurSum += texture2D(uCamTex, vCamTex + vec2(float(dx), float(dy)) * step) * w;
-                    }
-                }
-                vec4 blurred = blurSum / 16.0;
-
+                // Chain texels are addressed by aTex (vMaskTex): the downsample
+                // pass baked the transform into the chain content, so sampling
+                // it with vCamTex would displace the blurred copy of the person.
+                vec4 blurred = texture2D(uBlurTex, vMaskTex);
                 gl_FragColor = mix(blurred, original, personAlpha);
             }
         """.trimIndent()
@@ -1153,9 +1323,97 @@ class GpuCompositor : FrameCompositor {
         bl2dUCamTransform = GLES20.glGetUniformLocation(p, "uCamTransform")
         bl2dUCamTex = GLES20.glGetUniformLocation(p, "uCamTex")
         bl2dUMaskTex = GLES20.glGetUniformLocation(p, "uMaskTex")
-        bl2dUTexelSize = GLES20.glGetUniformLocation(p, "uTexelSize")
-        bl2dUTexelScale = GLES20.glGetUniformLocation(p, "uTexelScale")
+        bl2dUBlurTex = GLES20.glGetUniformLocation(p, "uBlurTex")
         bl2dUEdgeSmoothing = GLES20.glGetUniformLocation(p, "uEdgeSmoothing")
+    }
+
+    private fun buildDownsampleProgramOes() {
+        val vs = """
+            attribute vec4 aPos;
+            attribute vec2 aTex;
+            uniform mat4 uCamTransform;
+            varying vec2 vCamTex;
+            void main() {
+                gl_Position = aPos;
+                vCamTex = (uCamTransform * vec4(aTex, 0.0, 1.0)).xy;
+            }
+        """.trimIndent()
+        val fs = """
+            #extension GL_OES_EGL_image_external : require
+            precision mediump float;
+            varying vec2 vCamTex;
+            uniform samplerExternalOES uCamTex;
+            void main() {
+                gl_FragColor = texture2D(uCamTex, vCamTex);
+            }
+        """.trimIndent()
+        val p = linkProgram(vs, fs)
+        downsampleProgramOes = p
+        dsOesAPos = GLES20.glGetAttribLocation(p, "aPos")
+        dsOesATex = GLES20.glGetAttribLocation(p, "aTex")
+        dsOesUCamTransform = GLES20.glGetUniformLocation(p, "uCamTransform")
+        dsOesUCamTex = GLES20.glGetUniformLocation(p, "uCamTex")
+    }
+
+    private fun buildDownsampleProgram2D() {
+        val vs = """
+            attribute vec4 aPos;
+            attribute vec2 aTex;
+            uniform mat4 uCamTransform;
+            varying vec2 vCamTex;
+            void main() {
+                gl_Position = aPos;
+                vCamTex = (uCamTransform * vec4(aTex, 0.0, 1.0)).xy;
+            }
+        """.trimIndent()
+        val fs = """
+            precision mediump float;
+            varying vec2 vCamTex;
+            uniform sampler2D uCamTex;
+            void main() {
+                gl_FragColor = texture2D(uCamTex, vCamTex);
+            }
+        """.trimIndent()
+        val p = linkProgram(vs, fs)
+        downsampleProgram2D = p
+        ds2dAPos = GLES20.glGetAttribLocation(p, "aPos")
+        ds2dATex = GLES20.glGetAttribLocation(p, "aTex")
+        ds2dUCamTransform = GLES20.glGetUniformLocation(p, "uCamTransform")
+        ds2dUCamTex = GLES20.glGetUniformLocation(p, "uCamTex")
+    }
+
+    private fun buildBlurPassProgram() {
+        val vs = """
+            attribute vec4 aPos;
+            attribute vec2 aTex;
+            varying vec2 vTex;
+            void main() {
+                gl_Position = aPos;
+                vTex = aTex;
+            }
+        """.trimIndent()
+        // 5-tap linear-sampled Gaussian (weights 0.2270/0.3162/0.0703); the
+        // bilinear trick folds pairs of taps into one fetch per offset.
+        val fs = """
+            precision mediump float;
+            varying vec2 vTex;
+            uniform sampler2D uSrcTex;
+            uniform vec2 uStep;
+            void main() {
+                vec4 c = texture2D(uSrcTex, vTex) * 0.2270270270;
+                c += (texture2D(uSrcTex, vTex + uStep * 1.3846153846) +
+                      texture2D(uSrcTex, vTex - uStep * 1.3846153846)) * 0.3162162162;
+                c += (texture2D(uSrcTex, vTex + uStep * 3.2307692308) +
+                      texture2D(uSrcTex, vTex - uStep * 3.2307692308)) * 0.0702702703;
+                gl_FragColor = c;
+            }
+        """.trimIndent()
+        val p = linkProgram(vs, fs)
+        blurPassProgram = p
+        bpAPos = GLES20.glGetAttribLocation(p, "aPos")
+        bpATex = GLES20.glGetAttribLocation(p, "aTex")
+        bpUSrcTex = GLES20.glGetUniformLocation(p, "uSrcTex")
+        bpUStep = GLES20.glGetUniformLocation(p, "uStep")
     }
 
     private fun buildColorProgramOes() {
@@ -1451,6 +1709,19 @@ class GpuCompositor : FrameCompositor {
             GLES20.glDeleteProgram(blurProgram2D)
             blurProgram2D = 0
         }
+        if (downsampleProgramOes != 0) {
+            GLES20.glDeleteProgram(downsampleProgramOes)
+            downsampleProgramOes = 0
+        }
+        if (downsampleProgram2D != 0) {
+            GLES20.glDeleteProgram(downsampleProgram2D)
+            downsampleProgram2D = 0
+        }
+        if (blurPassProgram != 0) {
+            GLES20.glDeleteProgram(blurPassProgram)
+            blurPassProgram = 0
+        }
+        deleteBlurChain()
         if (colorProgramOes != 0) {
             GLES20.glDeleteProgram(colorProgramOes)
             colorProgramOes = 0
@@ -1487,5 +1758,23 @@ class GpuCompositor : FrameCompositor {
         private const val TAG = "MiVBGCompositor"
         private val IDENTITY_MATRIX = Matrix()
         private val EMPTY_RELEASE_CALLBACK = Runnable { }
+
+        /**
+         * sigma of one H+V iteration pair in texels, for a step spacing of 1:
+         * 5-tap linear kernel (sum w*x^2 = 2.6794 per axis) times two axes = 5.3588.
+         * Three iterations with steps s, 2s, 4s add (1+4+16)=21x that.
+         */
+        private const val BLUR_SIGMA_PER_STEP = 10.608f // sqrt(5.3588 * 21)
+
+        /**
+         * Step sizes (chain texels) for the progressive separable blur passes.
+         * Chosen so the final sigma equals [radiusPx] full-resolution pixels,
+         * matching iOS `CIImage.applyingGaussianBlur(sigma: radius)` — the chain
+         * runs at half resolution, hence the 0.5 factor.
+         */
+        internal fun progressiveBlurSteps(radiusPx: Float): FloatArray {
+            val step = (radiusPx * 0.5f) / BLUR_SIGMA_PER_STEP
+            return floatArrayOf(step, step * 2f, step * 4f)
+        }
     }
 }
