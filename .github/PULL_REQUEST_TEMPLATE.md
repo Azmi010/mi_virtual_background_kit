@@ -10,6 +10,7 @@ Fixes #
 
 - [ ] Bug fix
 - [ ] New feature
+- [ ] Public API change (if it breaks exhaustive `switch`es or existing callers, mark the CHANGELOG entry **Breaking:**)
 - [ ] Documentation
 - [ ] Refactor / chore
 

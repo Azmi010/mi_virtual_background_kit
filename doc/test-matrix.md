@@ -55,8 +55,9 @@ Legend hasil: `pass` · `fail` · `n/a` · kosong = belum dijalankan.
 | iOS low/mid | **Tidak** | Tidak ada hardware |
 
 Konsekuensi: klaim performa di README/Batasan hanya boleh menyebut dua device di atas;
-target "3 kelas perangkat" (metrik keberhasilan §12) **tidak terpenuhi di v0.1**,
-dicatat sebagai batasan, bukan disamarkan.
+target "3 kelas perangkat" (metrik keberhasilan §12) **tidak terpenuhi di v0.1 dan v0.2**
+(hardware mid tidak tersedia — keputusan 10 Nov 2026, T12.3), dicatat sebagai batasan,
+bukan disamarkan.
 
 ## 4. Pelaksanaan
 

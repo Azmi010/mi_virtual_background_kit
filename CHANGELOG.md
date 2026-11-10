@@ -1,3 +1,11 @@
+## Catatan kebijakan 0.x
+
+Selama versi 0.x, perubahan yang memecah kode konsumen (subclass baru pada
+`sealed class VirtualBackgroundEffect`, kode error baru pada `BackgroundException`)
+diizinkan pada versi **minor** dan entri CHANGELOG-nya diawali **Breaking:**.
+Field baru `BackgroundQuality` bukan breaking selama punya nilai bawaan yang
+mempertahankan perilaku versi sebelumnya. Rincian: ADR 0002 butir 9.
+
 ## 0.1.1
 
 * Fix iOS Swift Package Manager build failure in consumer apps that resolve a
