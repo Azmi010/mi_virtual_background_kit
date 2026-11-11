@@ -31,19 +31,5 @@ void main() {
       expect(() => platform.statusStream, throwsUnimplementedError);
       expect(() => platform.fallbackStream, throwsUnimplementedError);
     });
-
-    test('spike methods', () {
-      expectUnimplemented(() => platform.spikeAttach('t'));
-      expectUnimplemented(() => platform.spikeFrameCount());
-      expectUnimplemented(() => platform.spikeInfo());
-      expectUnimplemented(() => platform.spikeBenchmarkReadback());
-      expectUnimplemented(() => platform.spikeSegmentBenchmark());
-      expectUnimplemented(() => platform.spikeCompositeBench());
-      expectUnimplemented(() => platform.spikeReadback());
-      expectUnimplemented(() => platform.spikeEnableGpu(true));
-      expectUnimplemented(() => platform.spikeGpuInfo());
-      expectUnimplemented(() => platform.spikeSetEnabled(true));
-      expectUnimplemented(() => platform.spikeDetach('t'));
-    });
   });
 }

@@ -1,60 +1,44 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:mi_virtual_background_kit/mi_virtual_background_kit.dart';
-// ignore: implementation_imports
-import 'package:mi_virtual_background_kit/src/platform/mi_virtual_background_kit_method_channel.dart';
 
 import 'livekit_page.dart';
 
 void main() {
-  runApp(const SpikeApp());
+  runApp(const ExampleApp());
 }
 
-class SpikeApp extends StatelessWidget {
-  const SpikeApp({super.key});
+class ExampleApp extends StatelessWidget {
+  const ExampleApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(home: const SpikePage());
+    return MaterialApp(home: const ExamplePage());
   }
 }
 
-class SpikePage extends StatefulWidget {
-  const SpikePage({super.key});
+class ExamplePage extends StatefulWidget {
+  const ExamplePage({super.key});
 
   @override
-  State<SpikePage> createState() => _SpikePageState();
+  State<ExamplePage> createState() => _ExamplePageState();
 }
 
-class _SpikePageState extends State<SpikePage> {
+class _ExamplePageState extends State<ExamplePage> {
   final _renderer = RTCVideoRenderer();
   final _kit = MiVirtualBackgroundKit();
-  // Spike diagnostics bypass the public kit API (T9.1 keeps the kit surface
-  // to promised methods only), so SPIKE_MODE talks to the channel directly.
-  final _spike = MethodChannelMiVirtualBackgroundKit();
   MediaStream? _stream;
   String _status = 'idle';
-  int _frames = 0;
-  int _fps = 0;
-  int _lastCount = 0;
-  bool _spiked = false;
   bool _prodAttached = false;
   String _activeEffectName = 'None';
   double _blurRadius = 20.0;
   BackgroundQuality _quality = BackgroundQuality.balanced;
-  bool _transformOn = true;
   bool _hideControls = false;
   Uint8List? _testImageBytes;
-  bool _benchmarked = false;
-  int _gpuMicros = 0;
-  int _gpuCount = 0;
-  String _gpuType = '';
-  Timer? _timer;
   StreamSubscription<ProcessorStatus>? _statusSubscription;
   StreamSubscription<PerformanceFallbackEvent>? _fallbackSubscription;
   ProcessorStatus _processorStatus = ProcessorStatus.idle;
@@ -113,109 +97,14 @@ class _SpikePageState extends State<SpikePage> {
       if (mounted) setState(() => _isSupported = supported);
       setState(() => _status = 'track=${track.id}');
 
-      const prodMode = !bool.fromEnvironment('SPIKE_MODE');
-      debugPrint('PROD_ATTACH=$prodMode');
-      if (prodMode) {
-        // Production processor with runtime background compositing.
-        await _kit.attach(track, quality: _quality);
-        setState(() => _prodAttached = true);
-        debugPrint('PROD attached track=${track.id}');
-      } else {
-        final ok = await _spike.spikeAttach(track.id!);
-        setState(() => _spiked = ok);
-        debugPrint('SPIKE attach=$ok trackId=${track.id}');
-
-        if (!Platform.isAndroid) {
-          debugPrint('SPIKE gpu path is Android only, skipping');
-        } else {
-          final gpuOk = await _spike.spikeEnableGpu(true);
-          debugPrint('SPIKE gpuEnabled=$gpuOk');
-        }
-      }
-
-      _timer?.cancel();
-      _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateHud());
-      Future<void>.delayed(const Duration(seconds: 1), () async {
-        // bare bool.fromEnvironment does not read the environment (always
-        // false); reuse the const above.
-        if (_benchmarked || prodMode) return;
-        _benchmarked = true;
-        if (Platform.isAndroid) {
-          final rb = await _spike.spikeReadback();
-          debugPrint('SPIKE readback=$rb');
-          final seg = await _spike.spikeSegmentBenchmark();
-          debugPrint('SPIKE segment=$seg');
-          await _runCompositeStages();
-        } else {
-          await _spike.spikeBenchmarkReadback();
-        }
-      });
+      // Production processor with runtime background compositing.
+      await _kit.attach(track, quality: _quality);
+      setState(() => _prodAttached = true);
+      debugPrint('PROD attached track=${track.id}');
     } catch (e) {
       setState(() => _status = 'ERROR $e');
-      debugPrint('SPIKE error $e');
+      debugPrint('EXAMPLE error $e');
     }
-  }
-
-  Future<void> _runCompositeStages() async {
-    setState(() => _status = 'composite bench @640...');
-    final r1 = await _spike.spikeCompositeBench();
-    debugPrint('COMPOSITE640 $r1');
-    setState(() => _status = 'composite640 done');
-
-    // Tear the 640p track down so the next getUserMedia gets fresh 720p
-    // constraints — flutter_webrtc would otherwise share the old VideoSource.
-    _timer?.cancel();
-    try {
-      await _spike.spikeDetach(_stream!.getVideoTracks().first.id!);
-    } catch (_) {
-      // Detach is best-effort; the stream is disposed right after.
-    }
-    _stream?.getTracks().forEach((t) => t.stop());
-    await _stream?.dispose();
-
-    final s2 = await navigator.mediaDevices.getUserMedia(const {
-      'audio': false,
-      'video': {
-        'facingMode': 'user',
-        'width': 1280,
-        'height': 720,
-        'frameRate': 30,
-      },
-    });
-    _stream = s2;
-    _renderer.srcObject = s2;
-    final t2 = s2.getVideoTracks().first;
-    await _spike.spikeAttach(t2.id!);
-    await _spike.spikeEnableGpu(true);
-
-    setState(() => _status = 'composite bench @720p...');
-    final r2 = await _spike.spikeCompositeBench();
-    debugPrint('COMPOSITE720 $r2');
-    setState(() => _status = 'composite720 done ${r2['w']}x${r2['h']}');
-
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateHud());
-  }
-
-  Future<void> _updateHud() async {
-    if (!_spiked && !_prodAttached) return;
-    final info = await _spike.spikeInfo();
-    final n = (info['frames'] as int?) ?? 0;
-    final gpu = (Platform.isAndroid && _spiked)
-        ? await _spike.spikeGpuInfo()
-        : <dynamic, dynamic>{};
-    setState(() {
-      _fps = _lastCount > 0 ? (n - _lastCount).clamp(0, 120) : n;
-      _lastCount = n;
-      _frames = n;
-      _gpuMicros = (gpu['compositeMicros'] as int?) ?? 0;
-      _gpuCount = (gpu['compositeCount'] as int?) ?? 0;
-      _gpuType = (gpu['inputType'] as String?) ?? '';
-    });
-    debugPrint(
-      'HUD frames=$n fps=$_fps buffer=${info['bufferType']} '
-      'rot=${info['rotation']} size=${info['width']}x${info['height']} '
-      'gpu=${_gpuMicros}us count=$_gpuCount type=$_gpuType',
-    );
   }
 
   Future<Uint8List> _ensureTestPatternImage() async {
@@ -268,7 +157,6 @@ class _SpikePageState extends State<SpikePage> {
       await _kit.attach(track, quality: _quality);
       setState(() {
         _prodAttached = true;
-        _spiked = false;
         _activeEffectName = 'None';
       });
       debugPrint('PROD attached track=${track.id}');
@@ -283,7 +171,6 @@ class _SpikePageState extends State<SpikePage> {
       setState(() {
         _prodAttached = false;
         _activeEffectName = 'None';
-        _fps = 0;
       });
       debugPrint('PROD detached');
     } catch (e) {
@@ -372,18 +259,10 @@ class _SpikePageState extends State<SpikePage> {
     }
   }
 
-  Future<void> _toggleTransform() async {
-    final next = !_transformOn;
-    await _spike.spikeSetEnabled(next);
-    setState(() => _transformOn = next);
-    debugPrint('SPIKE transformOn=$next');
-  }
-
   @override
   void dispose() {
     _statusSubscription?.cancel();
     _fallbackSubscription?.cancel();
-    _timer?.cancel();
     _kit.dispose();
     _stream?.getTracks().forEach((t) => t.stop());
     _stream?.dispose();
@@ -396,7 +275,6 @@ class _SpikePageState extends State<SpikePage> {
     // camera VideoSource for a second getUserMedia, and such shared tracks
     // never bind the videoSource processor, so addProcessor gets no frames.
     await _detach();
-    _timer?.cancel();
     final stream = _stream;
     _stream = null;
     stream?.getTracks().forEach((t) => t.stop());
@@ -428,11 +306,6 @@ class _SpikePageState extends State<SpikePage> {
             style: const TextStyle(fontSize: 11),
           ),
           const SizedBox(height: 2),
-          Text(
-            'frames: $_frames  fps: $_fps  mode: ${_prodAttached ? "PROD" : "SPIKE"}',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-          ),
           if (_lastFallbackMessage != null) ...[
             const SizedBox(height: 2),
             Text(
@@ -443,13 +316,6 @@ class _SpikePageState extends State<SpikePage> {
                 color: Colors.deepOrange,
                 fontWeight: FontWeight.bold,
               ),
-            ),
-          ],
-          if (!_prodAttached) ...[
-            Text(
-              'gpu: ${_gpuMicros}us  n=$_gpuCount  type=$_gpuType',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12),
             ),
           ],
           const SizedBox(height: 6),
@@ -558,13 +424,7 @@ class _SpikePageState extends State<SpikePage> {
                 if (set.isNotEmpty) _changeQuality(set.first);
               },
             ),
-          ] else
-            ElevatedButton(
-              onPressed: _spiked ? _toggleTransform : null,
-              child: Text(
-                _transformOn ? 'Disable transform' : 'Enable transform',
-              ),
-            ),
+          ],
         ],
       ),
     );
@@ -621,7 +481,7 @@ class _SpikePageState extends State<SpikePage> {
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      'fps: $_fps  frames: $_frames  status: ${_processorStatus.name}  effect: $_activeEffectName',
+                      'status: ${_processorStatus.name}  effect: $_activeEffectName',
                       style: const TextStyle(color: Colors.white, fontSize: 11),
                     ),
                   ),
