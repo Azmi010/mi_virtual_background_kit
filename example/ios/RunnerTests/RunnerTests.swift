@@ -1237,4 +1237,85 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(fallbackEvents.first?["action"] as? String, "qualityDegraded")
     XCTAssertEqual(fallbackEvents.first?["segmentationWidth"] as? Int, 192)
   }
+
+  // MARK: - T14.1 shared/registry-replacement redirect (ADR 0002 §6)
+
+  private func makeRTCTrack(id: String) -> RTCVideoTrack {
+    let factory = RTCPeerConnectionFactory()
+    return factory.videoTrack(with: factory.videoSource(), trackId: id)
+  }
+
+  private func makeAdapter() -> VideoProcessingAdapter {
+    VideoProcessingAdapter(rtcVideoSource: RTCPeerConnectionFactory().videoSource())
+  }
+
+  func testResolveAttachTarget_directWhenTrackHasProcessing() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    let adapter = makeAdapter()
+    let track = LocalVideoTrack(track: makeRTCTrack(id: "t_direct"), videoProcessing: adapter)
+
+    let (target, action) = plugin.resolveAttachTarget(track: track, capturerAdapter: nil)
+
+    XCTAssertEqual(action, "direct")
+    XCTAssertTrue((target as AnyObject) === track)
+    XCTAssertTrue(plugin.retainedAdapter === adapter)
+  }
+
+  func testResolveAttachTarget_unwiredNoAdapterDegradesToTrack() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    let track = LocalVideoTrack(track: makeRTCTrack(id: "t_unwired"))
+
+    let (target, action) = plugin.resolveAttachTarget(track: track, capturerAdapter: nil)
+
+    XCTAssertEqual(action, "unwired-no-adapter")
+    XCTAssertTrue((target as AnyObject) === track)
+    XCTAssertNil(plugin.retainedAdapter)
+  }
+
+  func testResolveAttachTarget_redirectsAndRetainsAdapterAcrossCalls() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    let adapter = makeAdapter()
+    let track = LocalVideoTrack(track: makeRTCTrack(id: "t_redirect"))
+
+    let (first, firstAction) = plugin.resolveAttachTarget(track: track, capturerAdapter: adapter)
+    XCTAssertEqual(firstAction, "redirect-adapter")
+    XCTAssertTrue((first as AnyObject) === adapter)
+
+    // Retained: the capturer reference is gone (registry replacement) but the
+    // adapter must still be the redirect target.
+    let (second, secondAction) = plugin.resolveAttachTarget(track: track, capturerAdapter: nil)
+    XCTAssertEqual(secondAction, "redirect-adapter")
+    XCTAssertTrue((second as AnyObject) === adapter)
+    XCTAssertTrue(plugin.retainedAdapter === adapter)
+  }
+
+  func testDetach_removesProcessingFromRedirectAdapter() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    let adapter = RecordingAdapter(rtcVideoSource: RTCPeerConnectionFactory().videoSource())
+    // Cache the adapter as the attached object, as the redirect path does.
+    // trackDetacher stays nil so the production detacher runs.
+    plugin.trackAttacher = { _, _ in adapter }
+
+    let attachCall = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "t_adapter"])
+    let expAttach = expectation(description: "attach")
+    plugin.handle(attachCall) { _ in expAttach.fulfill() }
+    waitForExpectations(timeout: 1)
+
+    let detachCall = FlutterMethodCall(methodName: "detach", arguments: nil)
+    let expDetach = expectation(description: "detach")
+    plugin.handle(detachCall) { _ in expDetach.fulfill() }
+    waitForExpectations(timeout: 1)
+
+    XCTAssertEqual(adapter.removedProcessors.count, 1)
+    XCTAssertEqual(plugin.currentStatus, "idle")
+  }
+}
+
+/// Test double: records removeProcessing instead of touching the chain.
+final class RecordingAdapter: VideoProcessingAdapter {
+  private(set) var removedProcessors: [ExternalVideoProcessingDelegate] = []
+
+  override func removeProcessing(_ processor: ExternalVideoProcessingDelegate) {
+    removedProcessors.append(processor)
+  }
 }

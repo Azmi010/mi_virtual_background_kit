@@ -271,9 +271,10 @@ class _ExamplePageState extends State<ExamplePage> {
   }
 
   Future<void> _openLiveKit() async {
-    // One local camera session at a time: flutter_webrtc reuses an open
-    // camera VideoSource for a second getUserMedia, and such shared tracks
-    // never bind the videoSource processor, so addProcessor gets no frames.
+    // Stop the local camera first (clean hand-off to the LiveKit page).
+    // Not required for rendering anymore: since T14.1 the kit redirects
+    // attach to the track that actually receives frames (ADR 0002 §6), but
+    // one camera session at a time keeps the example simple.
     await _detach();
     final stream = _stream;
     _stream = null;

@@ -8,6 +8,11 @@ import flutter_webrtc
 public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   private var frameProcessor: FrameProcessor?
   private var attachedTrack: Any?
+  // T14.1 (ADR 0002 §6): the adapter is the camera chain's only strong owner
+  // (capturer.delegate is weak) and the redirect target after
+  // `stream.getMediaTracks()` replaces the registry wrapper, so it must
+  // outlive detach.
+  internal var retainedAdapter: VideoProcessingAdapter?
   private var eventSink: FlutterEventSink?
   internal var currentStatus: String = "idle"
   private weak var registrar: FlutterPluginRegistrar?
@@ -70,8 +75,37 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
       NSLog("MiVBG attach failed: track \(trackId) not found in localTracks")
       return nil
     }
-    track.addProcessing(processor)
-    return track
+    // T14.1 (ADR 0002 §6): a registry replacement leaves track.processing nil,
+    // so addProcessing on it would silently no-op. Re-target to the adapter
+    // that actually feeds frames.
+    let (target, action) = resolveAttachTarget(
+      track: track,
+      capturerAdapter: plugin.videoCapturer?.delegate as? VideoProcessingAdapter)
+    print("T132| probe track=\(trackId) action=\(action)")
+    if let adapter = target as? VideoProcessingAdapter {
+      adapter.addProcessing(processor)
+    } else {
+      track.addProcessing(processor)
+    }
+    return target
+  }
+
+  /// T14.1 (ADR 0002 §6): pick the object that actually processes frames.
+  /// `processing` is read via KVC because the property is nullable at runtime
+  /// (`initWithTrack:` stores nil) despite its nonnull annotation.
+  internal func resolveAttachTarget(
+    track: LocalVideoTrack,
+    capturerAdapter: VideoProcessingAdapter?
+  ) -> (target: Any, action: String) {
+    if let wired = (track as NSObject).value(forKey: "processing") as? VideoProcessingAdapter {
+      retainedAdapter = wired
+      return (track, "direct")
+    }
+    guard let adapter = capturerAdapter ?? retainedAdapter else {
+      return (track, "unwired-no-adapter")
+    }
+    retainedAdapter = adapter
+    return (adapter, "redirect-adapter")
   }
 
   /// Detaches [processor] from [track]; idempotent per FR-06.
@@ -80,9 +114,12 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
       customDetacher(track, processor)
       return
     }
-    guard let track = track as? LocalVideoTrack else { return }
-    if let processor = processor {
+    guard let processor else { return }
+    if let track = track as? LocalVideoTrack {
       track.removeProcessing(processor)
+    } else if let adapter = track as? VideoProcessingAdapter {
+      // T14.1 (ADR 0002 §6): the cached object is the adapter, not the wrapper.
+      adapter.removeProcessing(processor)
     }
   }
 
@@ -273,6 +310,7 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
 
     case "dispose":
       releaseFrameProcessor()
+      retainedAdapter = nil
       updateStatus("idle")
       print("[MiVBG] Disposed plugin resources")
       result(nil)

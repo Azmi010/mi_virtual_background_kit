@@ -90,5 +90,5 @@ dependencies {
     implementation("com.google.android.datatransport:transport-runtime:3.1.0")
     implementation("com.google.android.datatransport:transport-backend-cct:3.1.0")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
-    testImplementation("org.mockito:mockito-core:5.0.0")
+    testImplementation("org.mockito:mockito-core:5.24.0")
 }

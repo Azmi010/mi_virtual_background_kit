@@ -96,9 +96,9 @@ few MB per architecture; no download happens at runtime, ever.
 
 The published *local* camera track's underlying `MediaStreamTrack` — see the
 [LiveKit recipe](integration.md#livekit). Remote tracks are not supported.
-Stop any other local camera capture first: `flutter_webrtc` shares an open
-camera session for a second `getUserMedia`, and shared tracks bypass the
-frame-processor pipeline (attach "succeeds" but nothing renders).
+Shared camera tracks (a second `getUserMedia` reusing an open camera session)
+are handled since 0.2: `attach` redirects to the track that actually receives
+frames (ADR 0002 §6).
 
 ## 14. `dart doc` crashes with `RangeError` in `_stripDocImports`
 

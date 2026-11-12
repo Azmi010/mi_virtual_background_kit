@@ -472,10 +472,14 @@ class FrameProcessor(
 internal fun attachFrameProcessor(trackId: String, processor: FrameProcessor): LocalVideoTrack? {
     val plugin = com.cloudwebrtc.webrtc.FlutterWebRTCPlugin.sharedSingleton
         ?: return null
-    val track = plugin.getLocalTrack(trackId)
-    if (track !is LocalVideoTrack) return null
-    track.addProcessor(processor)
-    return track
+    val registry = plugin.getLocalTrack(trackId)
+    if (registry !is LocalVideoTrack) return null
+    // T14.1 (ADR 0002 §6): install on the wrapper the VideoSource actually
+    // feeds — a shared track or a registry replacement leaves `registry`
+    // without frames, so addProcessor there would silently never run.
+    val target = resolveWiredTrack(trackId, registry).target
+    target.addProcessor(processor)
+    return target
 }
 
 /** Removes [processor] from [track]; no-op when either side is gone. */

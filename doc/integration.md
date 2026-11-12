@@ -110,12 +110,11 @@ Notes:
 
 - Only **local, published** camera tracks. Remote participants' video is not
   processed (see README limitations).
-- **Stop other local camera captures first.** `flutter_webrtc` reuses an
-  already-open camera session for a second `getUserMedia` (to avoid an
-  Android Camera2 bug), but such *shared* tracks are not wired to the
-  frame-processor pipeline — `attach` succeeds yet effects never render.
-  Stop and dispose your other `MediaStream`s before connecting LiveKit (the
-  example does exactly this in `_openLiveKit`).
+- **Shared camera tracks work since 0.2** (ADR 0002 §6). `flutter_webrtc`
+  reuses an already-open camera session for a second `getUserMedia`, but the
+  kit redirects `attach` to the object that actually processes frames, so no
+  workaround is needed anymore. Stopping other local captures first remains
+  fine, just no longer required.
 - If the user switches camera through LiveKit, re-attach the kit the same way
   as in the flutter_webrtc section.
 - A runnable version of this recipe lives in
