@@ -103,6 +103,32 @@ class FrameProcessor(
     var targetFps: Int = 30
         private set
 
+    // T14.2 (FR-20): temporal mask smoothing at mask upload (ADR 0002 §7).
+    // 0 = raw upload, identical to v0.1.
+    @Volatile
+    var maskTemporalSmoothing: Float = 0.7f
+        private set
+
+    private val maskSmoother = MaskTemporalSmoother()
+
+    // T14.2/T14.3 measurement hooks: non-null mode overrides production
+    // smoothing from the example's flicker-test page (not public API).
+    @Volatile
+    private var testSmoothingMode: String? = null
+
+    @Volatile
+    private var testSmoothingValue: Float = 0f
+
+    @Volatile
+    private var testSmoothingD0: Float = MaskTemporalSmoother.ADAPTIVE_D0
+
+    @Volatile
+    private var testStage: String = "-"
+
+    private var fpsLogNs: Long = 0L
+    private var fpsLogFrames: Int = 0
+    private var fpsLogValue: Double = 0.0
+
     @Volatile
     var adaptiveSegmentInterval: Int = 3
         internal set
@@ -120,11 +146,36 @@ class FrameProcessor(
     private var lastFrameTimestampNs: Long = 0L
 
     /** Sets quality parameters controlling segmentation resolution, smoothing, and fps. */
-    fun setQuality(segmentationWidth: Int, edgeSmoothing: Float, targetFps: Int) {
+    fun setQuality(
+        segmentationWidth: Int,
+        edgeSmoothing: Float,
+        targetFps: Int,
+        maskTemporalSmoothing: Float = 0.7f,
+    ) {
         this.segmentationWidth = segmentationWidth
         this.edgeSmoothing = edgeSmoothing.coerceIn(0.0f, 1.0f)
         this.targetFps = targetFps.coerceIn(1, 60)
+        this.maskTemporalSmoothing = maskTemporalSmoothing.coerceIn(0.0f, 1.0f)
         compositor.edgeSmoothing = this.edgeSmoothing
+        maskSmoother.reset()
+    }
+
+    /**
+     * T14.2/T14.3 measurement hook: overrides mask smoothing
+     * (`mode`: `none`/`ema`/`adaptive`; `d0` null = default) and resets the
+     * history. Null mode resumes production smoothing from [setQuality].
+     */
+    fun setTestSmoothing(mode: String?, value: Float, d0: Float?) {
+        testSmoothingMode = mode
+        testSmoothingValue = value.coerceIn(0.0f, 1.0f)
+        testSmoothingD0 = d0 ?: MaskTemporalSmoother.ADAPTIVE_D0
+        maskSmoother.reset()
+    }
+
+    /** T14.2/T14.3 measurement hook: tags `T133|` lines and resets history. */
+    fun setTestStage(stage: String) {
+        testStage = stage
+        maskSmoother.reset()
     }
 
     /** Sets the blur effect with the given [radius] (in range (0, 100]). */
@@ -158,6 +209,7 @@ class FrameProcessor(
         windowStartTimestampNs = 0L
         windowFrameCount = 0
         lowFpsWindowCount = 0
+        maskSmoother.reset()
         compositor.clearMask()
     }
 
@@ -255,7 +307,7 @@ class FrameProcessor(
         if (mask != null) {
             pendingMask = null
             try {
-                compositor.uploadMask(mask)
+                uploadMaskWithSmoothing(mask)
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed to upload mask to GPU: $t")
             }
@@ -438,6 +490,53 @@ class FrameProcessor(
             lowFpsWindowCount = 0
         }
     }
+
+    /**
+     * T14.2: uploads the mask, temporal-smoothing it first (ADR 0002 §7), and
+     * emits one `T133|` metric line per mask while smoothing is active.
+     * `maskTemporalSmoothing == 0` uploads the raw mask (identical to v0.1).
+     */
+    private fun uploadMaskWithSmoothing(mask: PersonMask) {
+        val hookMode = testSmoothingMode
+        val mode = hookMode ?: "adaptive"
+        val value = if (hookMode != null) testSmoothingValue else maskTemporalSmoothing
+        if (hookMode == null && value <= 0f) {
+            maskSmoother.reset()
+            compositor.uploadMask(mask)
+            return
+        }
+        val d0 = if (hookMode != null) testSmoothingD0 else MaskTemporalSmoother.ADAPTIVE_D0
+        val res = maskSmoother.process(mask.alpha, mode, value, d0)
+        logMaskMetrics(res, mode, value, d0)
+        compositor.uploadMask(PersonMask(res.alpha, mask.width, mask.height))
+    }
+
+    /** One metric line per smoothed mask; parsed by tool/smoothing_metrics.py. */
+    private fun logMaskMetrics(
+        res: MaskTemporalSmoother.Result,
+        mode: String,
+        value: Float,
+        d0: Float,
+    ) {
+        val now = System.nanoTime()
+        if (fpsLogNs == 0L) {
+            fpsLogNs = now
+            fpsLogFrames = frames.get()
+        } else if (now - fpsLogNs >= 1_000_000_000L) {
+            fpsLogValue = (frames.get() - fpsLogFrames) * 1_000_000_000.0 / (now - fpsLogNs)
+            fpsLogNs = now
+            fpsLogFrames = frames.get()
+        }
+        Log.i(
+            TAG,
+            "T133| m=$mode v=${fmt(value, 2)} d0=${fmt(d0, 2)} st=$testStage " +
+                "rev=${res.rev} chg=${res.chg} d=${fmt(res.dPct, 1)} lag=${fmt(res.lagPct, 1)} " +
+                "px=${res.alpha.size} us=${res.us} fps=${fmt(fpsLogValue, 1)}",
+        )
+    }
+
+    private fun fmt(v: Number, digits: Int): String =
+        String.format(java.util.Locale.US, "%.${digits}f", v)
 
     /** Allows simulating a performance drop directly for unit testing (FR-12). */
     internal fun simulatePerformanceDrop(measuredFps: Double) {

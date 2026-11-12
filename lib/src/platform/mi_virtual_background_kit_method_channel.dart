@@ -56,6 +56,37 @@ class MethodChannelMiVirtualBackgroundKit
     await _guard(() => methodChannel.invokeMethod<void>('detach'));
   }
 
+  /// T14.2/T14.3 measurement hook: overrides mask smoothing
+  /// (`mode`: `none`/`ema`/`adaptive`, `value` 0..1, optional `d0`).
+  /// Not part of the public API; used by the example's flicker-test page.
+  Future<void> testSetSmoothing(
+    String? mode,
+    double value, {
+    double? d0,
+  }) async {
+    await _guard(
+      () => methodChannel.invokeMethod<void>(
+        'testSetSmoothing',
+        <String, Object?>{
+          'mode': mode,
+          'value': value,
+          if (d0 != null) 'd0': d0,
+        },
+      ),
+    );
+  }
+
+  /// T14.2/T14.3 measurement hook: tags subsequent `T133|` metric lines
+  /// and resets the smoothing history.
+  Future<void> testSetStage(String stage) async {
+    await _guard(
+      () => methodChannel.invokeMethod<void>(
+        'testSetStage',
+        <String, Object?>{'stage': stage},
+      ),
+    );
+  }
+
   @override
   Future<void> dispose() async {
     await _guard(() => methodChannel.invokeMethod<void>('dispose'));

@@ -133,6 +133,15 @@ class MiVirtualBackgroundKit {
         'must be positive',
       );
     }
+    if (quality.maskTemporalSmoothing.isNaN ||
+        quality.maskTemporalSmoothing < 0.0 ||
+        quality.maskTemporalSmoothing > 1.0) {
+      throw ArgumentError.value(
+        quality.maskTemporalSmoothing,
+        'maskTemporalSmoothing',
+        'must be between 0.0 and 1.0',
+      );
+    }
   }
 
   /// Validates [effect] before it reaches the platform channel.

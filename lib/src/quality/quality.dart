@@ -23,10 +23,15 @@ class BackgroundQuality {
   ///   0.0 means hard edge, 1.0 means maximum soft feathering. Default is 0.5.
   /// - [targetFps]: Target frame rate for compositing.
   ///   Must be positive. Default is 30.
+  /// - [maskTemporalSmoothing]: Temporal smoothing of the person mask between
+  ///   segmentation runs, in range `[0.0, 1.0]`. Higher values steady the
+  ///   silhouette but trail fast motion; 0.0 disables smoothing (v0.1
+  ///   behavior). Default is 0.7.
   const BackgroundQuality({
     this.segmentationWidth = 256,
     this.edgeSmoothing = 0.5,
     this.targetFps = 30,
+    this.maskTemporalSmoothing = 0.7,
   });
 
   /// Low quality preset for lower-end devices.
@@ -68,11 +73,17 @@ class BackgroundQuality {
   /// Target frame rate in frames per second.
   final int targetFps;
 
+  /// Temporal smoothing of the person mask between segmentation runs (FR-20).
+  ///
+  /// In range `[0.0, 1.0]`; 0.0 disables smoothing (identical to v0.1).
+  final double maskTemporalSmoothing;
+
   /// Serializes to a platform channel map.
   Map<String, Object?> toMap() => <String, Object?>{
         'segmentationWidth': segmentationWidth,
         'edgeSmoothing': edgeSmoothing,
         'targetFps': targetFps,
+        'maskTemporalSmoothing': maskTemporalSmoothing,
       };
 
   @override
@@ -82,12 +93,18 @@ class BackgroundQuality {
           runtimeType == other.runtimeType &&
           segmentationWidth == other.segmentationWidth &&
           edgeSmoothing == other.edgeSmoothing &&
-          targetFps == other.targetFps;
+          targetFps == other.targetFps &&
+          maskTemporalSmoothing == other.maskTemporalSmoothing;
 
   @override
-  int get hashCode => Object.hash(segmentationWidth, edgeSmoothing, targetFps);
+  int get hashCode => Object.hash(
+        segmentationWidth,
+        edgeSmoothing,
+        targetFps,
+        maskTemporalSmoothing,
+      );
 
   @override
   String toString() =>
-      'BackgroundQuality(segmentationWidth: $segmentationWidth, edgeSmoothing: $edgeSmoothing, targetFps: $targetFps)';
+      'BackgroundQuality(segmentationWidth: $segmentationWidth, edgeSmoothing: $edgeSmoothing, targetFps: $targetFps, maskTemporalSmoothing: $maskTemporalSmoothing)';
 }

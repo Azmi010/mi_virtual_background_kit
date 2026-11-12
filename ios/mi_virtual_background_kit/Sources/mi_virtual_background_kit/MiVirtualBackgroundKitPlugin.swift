@@ -216,7 +216,10 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
         let segW = (qualityMap["segmentationWidth"] as? NSNumber)?.intValue ?? 256
         let edgeSm = (qualityMap["edgeSmoothing"] as? NSNumber)?.floatValue ?? 0.5
         let fps = (qualityMap["targetFps"] as? NSNumber)?.intValue ?? 30
-        processor.setQuality(segmentationWidth: segW, edgeSmoothing: edgeSm, targetFps: fps)
+        let mts = (qualityMap["maskTemporalSmoothing"] as? NSNumber)?.floatValue ?? 0.7
+        processor.setQuality(
+          segmentationWidth: segW, edgeSmoothing: edgeSm, targetFps: fps, maskTemporalSmoothing: mts
+        )
       }
 
       guard let track = attachFrameProcessor(trackId: trackId, processor: processor) else {
@@ -298,7 +301,34 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
       let segW = (args["segmentationWidth"] as? NSNumber)?.intValue ?? 256
       let edgeSm = (args["edgeSmoothing"] as? NSNumber)?.floatValue ?? 0.5
       let fps = (args["targetFps"] as? NSNumber)?.intValue ?? 30
-      frameProcessor?.setQuality(segmentationWidth: segW, edgeSmoothing: edgeSm, targetFps: fps)
+      let mts = (args["maskTemporalSmoothing"] as? NSNumber)?.floatValue ?? 0.7
+      frameProcessor?.setQuality(
+        segmentationWidth: segW, edgeSmoothing: edgeSm, targetFps: fps, maskTemporalSmoothing: mts
+      )
+      result(nil)
+
+    // T14.2/T14.3 measurement hooks (example flicker-test page only).
+    case "testSetSmoothing":
+      guard let processor = frameProcessor else {
+        result(FlutterError(code: "no_processor", message: "kit not attached", details: nil))
+        return
+      }
+      let hookArgs = call.arguments as? [String: Any]
+      let mode = hookArgs?["mode"] as? String
+      let value = Float(hookArgs?["value"] as? Double ?? 0)
+      let d0 = (hookArgs?["d0"] as? Double).map(Float.init)
+      processor.setTestSmoothing(mode: mode, value: value, d0: d0)
+      print("T133| SET_SMOOTHING m=\(mode ?? "nil") v=\(value)")
+      result(nil)
+
+    case "testSetStage":
+      guard let processor = frameProcessor else {
+        result(FlutterError(code: "no_processor", message: "kit not attached", details: nil))
+        return
+      }
+      let stage = (call.arguments as? [String: Any])?["stage"] as? String ?? "-"
+      processor.setTestStage(stage)
+      print("T133| SET_STAGE st=\(stage)")
       result(nil)
 
     case "detach":

@@ -82,6 +82,46 @@ void main() {
       });
     });
 
+    test('setQuality sends maskTemporalSmoothing', () async {
+      mockHandler((_) async => null);
+      await platform.setQuality(const <String, Object?>{
+        'segmentationWidth': 256,
+        'edgeSmoothing': 0.5,
+        'targetFps': 30,
+        'maskTemporalSmoothing': 0.7,
+      });
+      expect(log.single.method, 'setQuality');
+      expect(
+        (log.single.arguments as Map)['maskTemporalSmoothing'],
+        0.7,
+      );
+    });
+
+    test('testSetSmoothing sends mode, value, and optional d0', () async {
+      mockHandler((_) async => null);
+      await platform.testSetSmoothing('adaptive', 0.7, d0: 0.12);
+      expect(log.single.method, 'testSetSmoothing');
+      expect(log.single.arguments, <String, Object?>{
+        'mode': 'adaptive',
+        'value': 0.7,
+        'd0': 0.12,
+      });
+
+      log.clear();
+      await platform.testSetSmoothing('none', 0.0);
+      expect(log.single.arguments, <String, Object?>{
+        'mode': 'none',
+        'value': 0.0,
+      });
+    });
+
+    test('testSetStage sends stage tag', () async {
+      mockHandler((_) async => null);
+      await platform.testSetStage('still');
+      expect(log.single.method, 'testSetStage');
+      expect(log.single.arguments, <String, Object?>{'stage': 'still'});
+    });
+
     test('setEffect sends serialized map', () async {
       mockHandler((_) async => null);
       await platform.setEffect(<String, Object?>{

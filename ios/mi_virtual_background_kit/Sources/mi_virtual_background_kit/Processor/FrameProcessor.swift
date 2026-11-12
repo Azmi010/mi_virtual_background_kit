@@ -41,6 +41,21 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
     public private(set) var segmentationWidth: Int = 256
     public private(set) var edgeSmoothing: Float = 0.5
     public private(set) var targetFps: Int = 30
+
+    // T14.2 (FR-20): temporal mask smoothing at mask upload (ADR 0002 §7).
+    // 0 = raw upload, identical to v0.1.
+    public private(set) var maskTemporalSmoothing: Float = 0.7
+    private let maskSmoother = MaskTemporalSmoother()
+
+    // T14.2/T14.3 measurement hooks: non-nil mode overrides production
+    // smoothing from the example's flicker-test page (not public API).
+    private var testSmoothingMode: String?
+    private var testSmoothingValue: Float = 0
+    private var testSmoothingD0: Float = MaskTemporalSmoother.adaptiveD0
+    private var testStage = "-"
+    private var fpsLogNs: Int64 = 0
+    private var fpsLogFrames = 0
+    private var fpsLogValue: Double = 0
     public internal(set) var adaptiveSegmentInterval: Int = 1
     public private(set) var isFallbackDisabled: Bool = false
     private var lastCompositedTimestampNs: Int64 = 0
@@ -134,13 +149,40 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         try ensureSegmenter()
     }
 
-    public func setQuality(segmentationWidth: Int, edgeSmoothing: Float, targetFps: Int) {
+    public func setQuality(
+        segmentationWidth: Int,
+        edgeSmoothing: Float,
+        targetFps: Int,
+        maskTemporalSmoothing: Float = 0.7
+    ) {
         lock.lock()
         defer { lock.unlock() }
         self.segmentationWidth = segmentationWidth
         self.edgeSmoothing = max(0.0, min(1.0, edgeSmoothing))
         self.targetFps = max(1, min(60, targetFps))
+        self.maskTemporalSmoothing = max(0.0, min(1.0, maskTemporalSmoothing))
         compositor.edgeSmoothing = self.edgeSmoothing
+        maskSmoother.reset()
+    }
+
+    /// T14.2/T14.3 measurement hook: overrides mask smoothing
+    /// (`mode`: `none`/`ema`/`adaptive`; `d0` nil = default) and resets the
+    /// history. Nil mode resumes production smoothing from `setQuality`.
+    public func setTestSmoothing(mode: String?, value: Float, d0: Float?) {
+        lock.lock()
+        testSmoothingMode = mode
+        testSmoothingValue = max(0, min(1, value))
+        testSmoothingD0 = d0 ?? MaskTemporalSmoother.adaptiveD0
+        lock.unlock()
+        maskSmoother.reset()
+    }
+
+    /// T14.2/T14.3 measurement hook: tags `T133|` lines and resets history.
+    public func setTestStage(_ stage: String) {
+        lock.lock()
+        testStage = stage
+        lock.unlock()
+        maskSmoother.reset()
     }
 
     public func clearEffect() {
@@ -151,6 +193,7 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         windowFrameCount = 0
         lowFpsWindowCount = 0
         lock.unlock()
+        maskSmoother.reset()
         compositor.clearMask()
     }
 
@@ -332,12 +375,66 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
                 self.lock.unlock()
 
                 if !released {
-                    self.compositor.uploadMask(mask, rotation: Int32(rotation.rawValue))
+                    self.applyMask(mask, rotation: Int32(rotation.rawValue))
                 }
             } catch {
                 NSLog("MiVBG segmentation error: \(error)")
             }
         }
+    }
+
+    /// T14.2: uploads the mask, temporal-smoothing it first (ADR 0002 §7), and
+    /// emits one `T133|` metric line per mask while smoothing is active.
+    /// `maskTemporalSmoothing == 0` uploads the raw mask (identical to v0.1).
+    private func applyMask(_ mask: PersonMask, rotation: Int32) {
+        lock.lock()
+        let hookMode = testSmoothingMode
+        let value = hookMode != nil ? testSmoothingValue : maskTemporalSmoothing
+        let d0 = hookMode != nil ? testSmoothingD0 : MaskTemporalSmoother.adaptiveD0
+        lock.unlock()
+        guard !(hookMode == nil && value <= 0) else {
+            maskSmoother.reset()
+            compositor.uploadMask(mask, rotation: rotation)
+            return
+        }
+        let mode = hookMode ?? "adaptive"
+        let res = maskSmoother.process(raw: mask.alpha, mode: mode, value: value, d0: d0)
+        logMaskMetrics(res, mode: mode, value: value, d0: d0)
+        compositor.uploadMask(
+            PersonMask(
+                alpha: res.alpha,
+                width: mask.width,
+                height: mask.height,
+                rotation: mask.rotation
+            ),
+            rotation: rotation
+        )
+    }
+
+    /// One metric line per smoothed mask; parsed by tool/smoothing_metrics.py.
+    private func logMaskMetrics(
+        _ res: MaskTemporalSmoother.Result,
+        mode: String,
+        value: Float,
+        d0: Float
+    ) {
+        let now = Int64(Date().timeIntervalSince1970 * 1_000_000_000)
+        lock.lock()
+        if fpsLogNs == 0 {
+            fpsLogNs = now
+            fpsLogFrames = frames
+        } else if now - fpsLogNs >= 1_000_000_000 {
+            fpsLogValue = Double(frames - fpsLogFrames) * 1_000_000_000.0 / Double(now - fpsLogNs)
+            fpsLogNs = now
+            fpsLogFrames = frames
+        }
+        let fps = fpsLogValue
+        let stage = testStage
+        lock.unlock()
+        print(String(
+            format: "T133| m=%@ v=%.2f d0=%.2f st=%@ rev=%d chg=%d d=%.1f lag=%.1f px=%d us=%llu fps=%.1f",
+            mode, value, d0, stage, res.rev, res.chg, res.dPct, res.lagPct, res.alpha.count, res.us, fps
+        ))
     }
 
     public func release() {

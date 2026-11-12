@@ -148,7 +148,8 @@ class MiVirtualBackgroundKitPlugin :
                     val segW = (qualityMap["segmentationWidth"] as? Number)?.toInt() ?: 256
                     val edgeSm = (qualityMap["edgeSmoothing"] as? Number)?.toFloat() ?: 0.5f
                     val fps = (qualityMap["targetFps"] as? Number)?.toInt() ?: 30
-                    processor.setQuality(segW, edgeSm, fps)
+                    val mts = (qualityMap["maskTemporalSmoothing"] as? Number)?.toFloat() ?: 0.7f
+                    processor.setQuality(segW, edgeSm, fps, mts)
                 }
                 val track = trackAttacher(trackId, processor)
                 if (track == null) {
@@ -224,7 +225,33 @@ class MiVirtualBackgroundKitPlugin :
                 val segW = (call.argument<Number>("segmentationWidth"))?.toInt() ?: 256
                 val edgeSm = (call.argument<Number>("edgeSmoothing"))?.toFloat() ?: 0.5f
                 val fps = (call.argument<Number>("targetFps"))?.toInt() ?: 30
-                frameProcessor?.setQuality(segW, edgeSm, fps)
+                val mts = (call.argument<Number>("maskTemporalSmoothing"))?.toFloat() ?: 0.7f
+                frameProcessor?.setQuality(segW, edgeSm, fps, mts)
+                result.success(null)
+            }
+            // T14.2/T14.3 measurement hooks (example flicker-test page only).
+            "testSetSmoothing" -> {
+                val processor = frameProcessor
+                if (processor == null) {
+                    result.error("no_processor", "kit not attached", null)
+                    return
+                }
+                val mode = call.argument<String>("mode")
+                val value = (call.argument<Double>("value") ?: 0.0).toFloat()
+                val d0 = call.argument<Double>("d0")?.toFloat()
+                processor.setTestSmoothing(mode, value, d0)
+                android.util.Log.i("MiVBG", "T133| SET_SMOOTHING m=$mode v=$value d0=$d0")
+                result.success(null)
+            }
+            "testSetStage" -> {
+                val processor = frameProcessor
+                if (processor == null) {
+                    result.error("no_processor", "kit not attached", null)
+                    return
+                }
+                val stage = call.argument<String>("stage") ?: "-"
+                processor.setTestStage(stage)
+                android.util.Log.i("MiVBG", "T133| SET_STAGE st=$stage")
                 result.success(null)
             }
             "detach" -> {

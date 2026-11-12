@@ -298,6 +298,80 @@ internal class MiVirtualBackgroundKitPluginTest {
     }
 
     @Test
+    fun onMethodCall_setQuality_withMaskTemporalSmoothing_succeeds() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+        plugin.trackAttacher = { _, _ -> Any() }
+
+        val attachCall = MethodCall("attach", mapOf("trackId" to "track-1"))
+        val attachResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(attachCall, attachResult)
+        Mockito.verify(attachResult).success(null)
+
+        val qualityCall = MethodCall(
+            "setQuality",
+            mapOf(
+                "segmentationWidth" to 256,
+                "edgeSmoothing" to 0.5,
+                "targetFps" to 30,
+                "maskTemporalSmoothing" to 0.7,
+            ),
+        )
+        val qualityResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(qualityCall, qualityResult)
+        Mockito.verify(qualityResult).success(null)
+    }
+
+    @Test
+    fun onMethodCall_testHooks_withoutProcessor_errorNoProcessor() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+
+        val smoothingCall = MethodCall(
+            "testSetSmoothing",
+            mapOf("mode" to "adaptive", "value" to 0.7, "d0" to 0.1),
+        )
+        val smoothingResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(smoothingCall, smoothingResult)
+        Mockito.verify(smoothingResult).error(
+            Mockito.eq("no_processor"),
+            Mockito.any(),
+            Mockito.isNull(),
+        )
+
+        val stageCall = MethodCall("testSetStage", mapOf("stage" to "still"))
+        val stageResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(stageCall, stageResult)
+        Mockito.verify(stageResult).error(
+            Mockito.eq("no_processor"),
+            Mockito.any(),
+            Mockito.isNull(),
+        )
+    }
+
+    @Test
+    fun onMethodCall_testHooks_withProcessor_succeed() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+        plugin.trackAttacher = { _, _ -> Any() }
+
+        val attachCall = MethodCall("attach", mapOf("trackId" to "track-1"))
+        val attachResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(attachCall, attachResult)
+        Mockito.verify(attachResult).success(null)
+
+        val smoothingCall = MethodCall(
+            "testSetSmoothing",
+            mapOf("mode" to "none", "value" to 0.0),
+        )
+        val smoothingResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(smoothingCall, smoothingResult)
+        Mockito.verify(smoothingResult).success(null)
+
+        val stageCall = MethodCall("testSetStage", mapOf("stage" to "motion"))
+        val stageResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(stageCall, stageResult)
+        Mockito.verify(stageResult).success(null)
+    }
+
+    @Test
     fun sendFallbackEvent_deliversPayloadToSink() {
         val plugin = MiVirtualBackgroundKitPlugin()
         val mockSink = Mockito.mock(EventChannel.EventSink::class.java)

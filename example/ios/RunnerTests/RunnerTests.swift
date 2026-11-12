@@ -1238,6 +1238,175 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(fallbackEvents.first?["segmentationWidth"] as? Int, 192)
   }
 
+  // MARK: - T14.2 mask temporal smoothing (FR-20, ADR 0002 §7)
+
+  private func maskFill(_ fill: UInt8, count: Int = 16) -> [UInt8] {
+    [UInt8](repeating: fill, count: count)
+  }
+
+  func testMaskSmoother_firstMaskIsWarmup_outputEqualsRaw() {
+    let s = MaskTemporalSmoother()
+    let res = s.process(raw: maskFill(0), mode: "ema", value: 0.5)
+    XCTAssertEqual(res.dPct, -1, accuracy: 0.001)
+    XCTAssertEqual(res.alpha, maskFill(0))
+    XCTAssertEqual(res.rev, 0)
+    XCTAssertEqual(res.chg, 0)
+  }
+
+  func testMaskSmoother_noneModeKeepsRaw() {
+    let s = MaskTemporalSmoother()
+    _ = s.process(raw: maskFill(0), mode: "none", value: 0)
+    let res = s.process(raw: maskFill(200), mode: "none", value: 0)
+    XCTAssertEqual(res.alpha, maskFill(200))
+    XCTAssertEqual(res.lagPct, 0, accuracy: 0.001)
+  }
+
+  func testMaskSmoother_reversalCountedOnABAFlicker() {
+    let s = MaskTemporalSmoother()
+    _ = s.process(raw: maskFill(0), mode: "none", value: 0)
+    _ = s.process(raw: maskFill(255), mode: "none", value: 0)
+    let res = s.process(raw: maskFill(0), mode: "none", value: 0)
+    XCTAssertEqual(res.chg, 16)
+    XCTAssertEqual(res.rev, 16)
+  }
+
+  func testMaskSmoother_emaS0EqualsNone() {
+    let s = MaskTemporalSmoother()
+    _ = s.process(raw: maskFill(0), mode: "ema", value: 0)
+    let res = s.process(raw: maskFill(180), mode: "ema", value: 0)
+    XCTAssertEqual(res.alpha, maskFill(180))
+  }
+
+  func testMaskSmoother_emaHalfWeightConverges() {
+    let s = MaskTemporalSmoother()
+    _ = s.process(raw: maskFill(0), mode: "ema", value: 0.5)
+    // alpha aliases the reused buffer: read it before the next call.
+    let first = s.process(raw: maskFill(200), mode: "ema", value: 0.5)
+    let firstLag = first.lagPct
+    XCTAssertEqual(Int(first.alpha[0]), 100)
+    let second = s.process(raw: maskFill(200), mode: "ema", value: 0.5)
+    XCTAssertEqual(Int(second.alpha[0]), 150)
+    XCTAssertLessThan(second.lagPct, firstLag)
+  }
+
+  func testMaskSmoother_adaptiveDropsSmoothingOnLargeMotion() {
+    let ema = MaskTemporalSmoother()
+    let adaptive = MaskTemporalSmoother()
+    _ = ema.process(raw: maskFill(0), mode: "ema", value: 0.9)
+    _ = adaptive.process(raw: maskFill(0), mode: "adaptive", value: 0.9)
+    let emaRes = ema.process(raw: maskFill(255), mode: "ema", value: 0.9)
+    let adRes = adaptive.process(raw: maskFill(255), mode: "adaptive", value: 0.9)
+    XCTAssertLessThan(adRes.lagPct, emaRes.lagPct)
+    XCTAssertGreaterThan(emaRes.lagPct, 50)
+  }
+
+  func testMaskSmoother_largerD0KeepsSmoothingLonger() {
+    // Jump 0 -> 26 gives d ~ 10.2%: above D0 0.06 (released) but below 0.12
+    // (still smoothing), so the loose D0 must lag behind.
+    let strict = MaskTemporalSmoother()
+    let loose = MaskTemporalSmoother()
+    _ = strict.process(raw: maskFill(0), mode: "adaptive", value: 0.9, d0: 0.06)
+    _ = loose.process(raw: maskFill(0), mode: "adaptive", value: 0.9, d0: 0.12)
+    let strictRes = strict.process(raw: maskFill(26), mode: "adaptive", value: 0.9, d0: 0.06)
+    let looseRes = loose.process(raw: maskFill(26), mode: "adaptive", value: 0.9, d0: 0.12)
+    XCTAssertLessThan(strictRes.lagPct, looseRes.lagPct)
+  }
+
+  func testMaskSmoother_resetRestartsWarmup() {
+    let s = MaskTemporalSmoother()
+    _ = s.process(raw: maskFill(0), mode: "ema", value: 0.5)
+    _ = s.process(raw: maskFill(100), mode: "ema", value: 0.5)
+    s.reset()
+    let res = s.process(raw: maskFill(30), mode: "ema", value: 0.5)
+    XCTAssertEqual(res.dPct, -1, accuracy: 0.001)
+    XCTAssertEqual(res.alpha, maskFill(30))
+  }
+
+  func testTestHooks_withoutProcessor_errorNoProcessor() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+
+    let smoothing = FlutterMethodCall(
+      methodName: "testSetSmoothing",
+      arguments: ["mode": "adaptive", "value": 0.7, "d0": 0.1]
+    )
+    let exp1 = expectation(description: "testSetSmoothing errors")
+    plugin.handle(smoothing) { result in
+      guard let err = result as? FlutterError else {
+        XCTFail("Expected FlutterError, got \(String(describing: result))")
+        return
+      }
+      XCTAssertEqual(err.code, "no_processor")
+      exp1.fulfill()
+    }
+
+    let stage = FlutterMethodCall(methodName: "testSetStage", arguments: ["stage": "still"])
+    let exp2 = expectation(description: "testSetStage errors")
+    plugin.handle(stage) { result in
+      guard let err = result as? FlutterError else {
+        XCTFail("Expected FlutterError, got \(String(describing: result))")
+        return
+      }
+      XCTAssertEqual(err.code, "no_processor")
+      exp2.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+  }
+
+  func testTestHooks_withProcessor_succeed() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    plugin.trackAttacher = { _, _ in NSObject() }
+
+    let attach = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "t1"])
+    let expAttach = expectation(description: "attach")
+    plugin.handle(attach) { _ in expAttach.fulfill() }
+    waitForExpectations(timeout: 1)
+
+    let smoothing = FlutterMethodCall(
+      methodName: "testSetSmoothing",
+      arguments: ["mode": "none", "value": 0.0]
+    )
+    let exp1 = expectation(description: "testSetSmoothing")
+    plugin.handle(smoothing) { result in
+      XCTAssertNil(result)
+      exp1.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+
+    let stage = FlutterMethodCall(methodName: "testSetStage", arguments: ["stage": "motion"])
+    let exp2 = expectation(description: "testSetStage")
+    plugin.handle(stage) { result in
+      XCTAssertNil(result)
+      exp2.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+  }
+
+  func testSetQuality_maskTemporalSmoothing_accepted() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    plugin.trackAttacher = { _, _ in NSObject() }
+
+    let attach = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "t1"])
+    let expAttach = expectation(description: "attach")
+    plugin.handle(attach) { _ in expAttach.fulfill() }
+    waitForExpectations(timeout: 1)
+
+    let quality = FlutterMethodCall(
+      methodName: "setQuality",
+      arguments: [
+        "segmentationWidth": 256,
+        "edgeSmoothing": 0.5,
+        "targetFps": 30,
+        "maskTemporalSmoothing": 0.7,
+      ]
+    )
+    let expQuality = expectation(description: "setQuality with maskTemporalSmoothing")
+    plugin.handle(quality) { result in
+      XCTAssertNil(result)
+      expQuality.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+  }
+
   // MARK: - T14.1 shared/registry-replacement redirect (ADR 0002 §6)
 
   private func makeRTCTrack(id: String) -> RTCVideoTrack {

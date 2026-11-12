@@ -194,6 +194,20 @@ void main() {
         ),
         throwsA(isA<ArgumentError>()),
       );
+      await expectLater(
+        kit.attach(
+          FakeTrack('track-1'),
+          quality: const BackgroundQuality(maskTemporalSmoothing: -0.1),
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      await expectLater(
+        kit.attach(
+          FakeTrack('track-1'),
+          quality: const BackgroundQuality(maskTemporalSmoothing: 1.5),
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
       expect(mock.calls, isEmpty);
     });
   });
@@ -209,6 +223,10 @@ void main() {
     test('rejects invalid quality without touching platform', () async {
       await expectLater(
         kit.setQuality(const BackgroundQuality(segmentationWidth: -1)),
+        throwsA(isA<ArgumentError>()),
+      );
+      await expectLater(
+        kit.setQuality(const BackgroundQuality(maskTemporalSmoothing: 1.5)),
         throwsA(isA<ArgumentError>()),
       );
       expect(mock.calls, isEmpty);
