@@ -48,10 +48,14 @@ jobs:
         with:
           channel: stable
           cache: true
+      # Diagnostic facts for build failures: the runner's Xcode differs from
+      # the local toolchain and the flutter tool only surfaces the xcresult
+      # issue summary, never the raw xcodebuild error.
+      - run: xcodebuild -version
       # Flutter <3.48 SPM rsync copies the package root (including example/build)
       # into itself recursively; the symlink breaks the loop (flutter#188647).
       - run: tool/link_example_build.sh
       - run: flutter pub get
         working-directory: example
-      - run: flutter build ios --debug --no-codesign
+      - run: flutter build ios --debug --no-codesign --verbose
         working-directory: example
