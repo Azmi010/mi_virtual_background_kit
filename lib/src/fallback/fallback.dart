@@ -8,6 +8,13 @@ enum FallbackAction {
   /// Virtual background effect was automatically disabled (reverted to bypass)
   /// because the device cannot sustain minimum viable frame rate.
   disabled,
+
+  /// A fallback-disabled effect or degraded quality was restored (FR-21).
+  ///
+  /// Emitted by automatic recovery (`BackgroundQuality.autoRecovery`) after
+  /// the frame rate stays stable, or by a manual re-enable
+  /// (`resumeEffect()` / `setEffect`) after a fallback disable.
+  recovered,
 }
 
 /// Event emitted when performance drops trigger an automatic fallback (FR-12).
@@ -35,10 +42,12 @@ final class PerformanceFallbackEvent {
 
   /// Deserializes a fallback event from native map.
   factory PerformanceFallbackEvent.fromMap(Map<dynamic, dynamic> map) {
-    final actionStr = map['action'] as String? ?? 'disabled';
-    final action = actionStr == 'qualityDegraded'
-        ? FallbackAction.qualityDegraded
-        : FallbackAction.disabled;
+    final action = switch (map['action'] as String?) {
+      'qualityDegraded' => FallbackAction.qualityDegraded,
+      'recovered' => FallbackAction.recovered,
+      // Unknown or missing action degrades to the safest interpretation.
+      _ => FallbackAction.disabled,
+    };
     return PerformanceFallbackEvent(
       action: action,
       reason: (map['reason'] as String?) ?? 'performance_drop',

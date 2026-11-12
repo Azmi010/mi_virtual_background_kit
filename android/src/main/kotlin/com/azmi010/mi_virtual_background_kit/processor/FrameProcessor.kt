@@ -137,6 +137,34 @@ class FrameProcessor(
     var isFallbackDisabled: Boolean = false
         internal set
 
+    // T14.4 (FR-21): fallback recovery state.
+    /** Whether `BackgroundQuality.autoRecovery` is enabled (opt-in). */
+    @Volatile
+    internal var autoRecovery: Boolean = false
+
+    /** Last user-configured segmentation width; stage-1 restore target. */
+    @Volatile
+    private var configuredWidth: Int = 256
+
+    /** Effect stashed when stage-2 disabled the pipeline; restored on resume. */
+    @Volatile
+    private var stashedEffect: EffectState? = null
+
+    /**
+     * One-shot latch: cleared when auto-recovery re-enables the effect, set
+     * again only by a manual setEffect/setQuality. A device that cannot keep
+     * up then stays disabled instead of flapping (PRD "tanpa osilasi").
+     */
+    @Volatile
+    private var autoRecoveryArmed: Boolean = true
+
+    /** Consecutive healthy fps windows; drives both recovery paths. */
+    private var healthyFpsWindowCount: Int = 0
+
+    /** True after auto-resume until the first frame composites (FR-21 status). */
+    @Volatile
+    private var awaitingActiveAfterResume: Boolean = false
+
     private var lastCompositedTimestampNs: Long = 0L
 
     // Performance window tracking (FR-12)
@@ -151,11 +179,16 @@ class FrameProcessor(
         edgeSmoothing: Float,
         targetFps: Int,
         maskTemporalSmoothing: Float = 0.7f,
+        autoRecovery: Boolean = false,
     ) {
+        this.configuredWidth = segmentationWidth
         this.segmentationWidth = segmentationWidth
         this.edgeSmoothing = edgeSmoothing.coerceIn(0.0f, 1.0f)
         this.targetFps = targetFps.coerceIn(1, 60)
         this.maskTemporalSmoothing = maskTemporalSmoothing.coerceIn(0.0f, 1.0f)
+        this.autoRecovery = autoRecovery
+        // A quality change is a manual intervention: re-arm auto-recovery (FR-21).
+        this.autoRecoveryArmed = true
         compositor.edgeSmoothing = this.edgeSmoothing
         maskSmoother.reset()
     }
@@ -178,30 +211,58 @@ class FrameProcessor(
         maskSmoother.reset()
     }
 
+    /**
+     * Adopts a user-chosen effect: leaves the fallback-disabled state, drops
+     * the stashed effect, and re-arms auto-recovery (manual intervention,
+     * FR-21). Returns true when this re-enabled an effect stage-2 disabled.
+     */
+    private fun adoptManualEffect(effect: EffectState): Boolean {
+        val wasFallbackDisabled = isFallbackDisabled
+        isFallbackDisabled = false
+        stashedEffect = null
+        autoRecoveryArmed = true
+        awaitingActiveAfterResume = false
+        currentEffect = effect
+        return wasFallbackDisabled
+    }
+
     /** Sets the blur effect with the given [radius] (in range (0, 100]). */
     fun setBlurEffect(radius: Float) {
-        isFallbackDisabled = false
-        currentEffect = EffectState.Blur(radius)
+        val resumed = adoptManualEffect(EffectState.Blur(radius))
         ensureSegmenter()
+        if (resumed) emitRecovered("manual")
     }
 
     /** Sets the solid color background effect with [color] (32-bit ARGB). */
     fun setColorEffect(color: Int) {
-        isFallbackDisabled = false
-        currentEffect = EffectState.Color(color)
+        val resumed = adoptManualEffect(EffectState.Color(color))
         ensureSegmenter()
+        if (resumed) emitRecovered("manual")
     }
 
     /** Sets the background image effect with [bitmap] and [fit] ("cover" or "contain"). */
     fun setImageEffect(bitmap: Bitmap, fit: String) {
-        isFallbackDisabled = false
         pendingImageBitmap = bitmap
-        currentEffect = EffectState.Image(bitmap, fit)
+        val resumed = adoptManualEffect(EffectState.Image(bitmap, fit))
         ensureSegmenter()
+        if (resumed) emitRecovered("manual")
     }
 
     /** Clears any active effect, returning to pass-through (NoEffect). */
     fun clearEffect() {
+        // User chose no effect: cancel any pending fallback recovery (FR-21).
+        isFallbackDisabled = false
+        stashedEffect = null
+        awaitingActiveAfterResume = false
+        resetEffectState()
+    }
+
+    /**
+     * Nulls the active effect and resets the performance windows. Leaves the
+     * fallback flags alone: stage-2 stashes the effect and sets
+     * `isFallbackDisabled` before calling this.
+     */
+    private fun resetEffectState() {
         currentEffect = null
         pendingMask = null
         pendingImageBitmap = null
@@ -209,6 +270,8 @@ class FrameProcessor(
         windowStartTimestampNs = 0L
         windowFrameCount = 0
         lowFpsWindowCount = 0
+        healthyFpsWindowCount = 0
+        awaitingActiveAfterResume = false
         maskSmoother.reset()
         compositor.clearMask()
     }
@@ -236,6 +299,42 @@ class FrameProcessor(
         lastHeight = frame.rotatedHeight
         val effect = currentEffect
 
+        val buffer = frame.buffer as? VideoFrame.TextureBuffer
+        val currentTimestamp = if (frame.timestampNs > 0) frame.timestampNs else System.nanoTime()
+
+        // FR-12/FR-21: monitor fps while an effect is active, or while a
+        // stage-2 fallback watches for auto-recovery.
+        if (effect != null || (isFallbackDisabled && autoRecovery)) {
+            // FR-09: background/foreground or camera restart leaves a multi-second
+            // gap; a stale window would measure near-zero fps and falsely trip FR-12.
+            if (lastFrameTimestampNs != 0L &&
+                currentTimestamp - lastFrameTimestampNs > FRAME_GAP_RESET_NS
+            ) {
+                windowStartTimestampNs = 0L
+                windowFrameCount = 0
+                lowFpsWindowCount = 0
+                healthyFpsWindowCount = 0
+            }
+            lastFrameTimestampNs = currentTimestamp
+
+            // FR-12: Monitor frame rate across sliding window and evaluate performance fallback
+            if (windowStartTimestampNs == 0L) {
+                windowStartTimestampNs = currentTimestamp
+                windowFrameCount = 0
+            } else {
+                windowFrameCount++
+                if (windowFrameCount >= FPS_MONITOR_WINDOW_FRAMES) {
+                    val elapsedSec = (currentTimestamp - windowStartTimestampNs) / 1_000_000_000.0
+                    if (elapsedSec > 0.0) {
+                        val measuredFps = windowFrameCount / elapsedSec
+                        evaluatePerformance(measuredFps)
+                    }
+                    windowStartTimestampNs = currentTimestamp
+                    windowFrameCount = 0
+                }
+            }
+        }
+
         // Bypass when no effect is applied (FR-04)
         if (effect == null) {
             if (n == 1 || n % 150 == 0) {
@@ -248,37 +347,7 @@ class FrameProcessor(
             return frame
         }
 
-        val buffer = frame.buffer as? VideoFrame.TextureBuffer ?: return frame
-
-        val currentTimestamp = if (frame.timestampNs > 0) frame.timestampNs else System.nanoTime()
-
-        // FR-09: background/foreground or camera restart leaves a multi-second
-        // gap; a stale window would measure near-zero fps and falsely trip FR-12.
-        if (lastFrameTimestampNs != 0L &&
-            currentTimestamp - lastFrameTimestampNs > FRAME_GAP_RESET_NS
-        ) {
-            windowStartTimestampNs = 0L
-            windowFrameCount = 0
-            lowFpsWindowCount = 0
-        }
-        lastFrameTimestampNs = currentTimestamp
-
-        // FR-12: Monitor frame rate across sliding window and evaluate performance fallback
-        if (windowStartTimestampNs == 0L) {
-            windowStartTimestampNs = currentTimestamp
-            windowFrameCount = 0
-        } else {
-            windowFrameCount++
-            if (windowFrameCount >= FPS_MONITOR_WINDOW_FRAMES) {
-                val elapsedSec = (currentTimestamp - windowStartTimestampNs) / 1_000_000_000.0
-                if (elapsedSec > 0.0) {
-                    val measuredFps = windowFrameCount / elapsedSec
-                    evaluatePerformance(measuredFps)
-                }
-                windowStartTimestampNs = currentTimestamp
-                windowFrameCount = 0
-            }
-        }
+        if (buffer == null) return frame
 
         if (targetFps < 30 && lastCompositedTimestampNs > 0L) {
             val elapsed = currentTimestamp - lastCompositedTimestampNs
@@ -414,6 +483,10 @@ class FrameProcessor(
                 }
                 if (composited != null) {
                     lastCompositedTimestampNs = currentTimestamp
+                    if (awaitingActiveAfterResume) {
+                        awaitingActiveAfterResume = false
+                        onStatusChange?.invoke("active")
+                    }
                     return composited
                 }
             } catch (t: Throwable) {
@@ -455,9 +528,31 @@ class FrameProcessor(
     }
 
     internal fun evaluatePerformance(measuredFps: Double) {
-        if (currentEffect == null || isReleased.get()) return
+        if (isReleased.get()) return
+
+        // FR-21: while bypassed by stage-2, watch for stable fps to auto-resume.
+        if (isFallbackDisabled) {
+            if (!autoRecovery || !autoRecoveryArmed ||
+                measuredFps < RECOVER_FPS_THRESHOLD
+            ) {
+                healthyFpsWindowCount = 0
+                return
+            }
+            healthyFpsWindowCount++
+            if (healthyFpsWindowCount >= RECOVERY_STABLE_WINDOWS) {
+                // One shot: if the device fails again it stays disabled until
+                // a manual setEffect/setQuality re-arms (PRD "tanpa osilasi").
+                autoRecoveryArmed = false
+                resumeFromFallback("auto")
+            }
+            return
+        }
+
+        // User chose no effect: nothing to monitor (FR-04).
+        if (currentEffect == null) return
 
         if (measuredFps < DEGRADE_FPS_THRESHOLD) {
+            healthyFpsWindowCount = 0
             lowFpsWindowCount++
             if (segmentationWidth > 192) {
                 val oldWidth = segmentationWidth
@@ -474,8 +569,10 @@ class FrameProcessor(
                     )
                 )
             } else if (measuredFps < CRITICAL_LOW_FPS && lowFpsWindowCount >= 2) {
+                // Stage 2: stash the effect before clearing so FR-21 can restore it.
+                stashedEffect = currentEffect
                 isFallbackDisabled = true
-                clearEffect()
+                resetEffectState()
                 Log.e(TAG, "Critical performance drop: fps=$measuredFps < $CRITICAL_LOW_FPS. Auto-disabled effect.")
                 onStatusChange?.invoke("idle")
                 onFallbackEvent?.invoke(
@@ -488,7 +585,58 @@ class FrameProcessor(
             }
         } else {
             lowFpsWindowCount = 0
+            // FR-21 hysteresis: restore the configured quality only after fps
+            // stays >= RECOVER_FPS_THRESHOLD (dead band between 14 and 20).
+            if (autoRecovery && measuredFps >= RECOVER_FPS_THRESHOLD) {
+                healthyFpsWindowCount++
+                if (healthyFpsWindowCount >= RECOVERY_STABLE_WINDOWS &&
+                    segmentationWidth != configuredWidth
+                ) {
+                    segmentationWidth = configuredWidth
+                    healthyFpsWindowCount = 0
+                    Log.i(TAG, "T144| quality restored width=$segmentationWidth fps=$measuredFps")
+                    emitRecovered("auto_quality")
+                }
+            } else {
+                healthyFpsWindowCount = 0
+            }
         }
+    }
+
+    /**
+     * Restores the effect stashed by stage-2 (FR-21). Emits `recovered`,
+     * then status `initializing`; the first composited frame emits `active`
+     * (PRD: disabled -> initializing -> active).
+     */
+    private fun resumeFromFallback(reason: String) {
+        val stash = stashedEffect
+        isFallbackDisabled = false
+        stashedEffect = null
+        healthyFpsWindowCount = 0
+        lowFpsWindowCount = 0
+        windowStartTimestampNs = 0L
+        windowFrameCount = 0
+        if (segmentationWidth != configuredWidth) {
+            segmentationWidth = configuredWidth
+        }
+        // Non-null: stage-2 only disables while an effect is active.
+        currentEffect = stash
+        awaitingActiveAfterResume = true
+        Log.i(TAG, "T144| recovered reason=$reason width=$segmentationWidth")
+        emitRecovered(reason)
+        onStatusChange?.invoke("initializing")
+    }
+
+    private fun emitRecovered(reason: String) {
+        onFallbackEvent?.invoke(
+            mapOf(
+                "event" to "fallback",
+                "action" to "recovered",
+                "reason" to reason,
+                "segmentationWidth" to segmentationWidth,
+                "targetFps" to targetFps,
+            )
+        )
     }
 
     /**
@@ -538,7 +686,7 @@ class FrameProcessor(
     private fun fmt(v: Number, digits: Int): String =
         String.format(java.util.Locale.US, "%.${digits}f", v)
 
-    /** Allows simulating a performance drop directly for unit testing (FR-12). */
+    /** Allows simulating a performance window directly for tests (FR-12/FR-21). */
     internal fun simulatePerformanceDrop(measuredFps: Double) {
         evaluatePerformance(measuredFps)
     }
@@ -556,6 +704,10 @@ class FrameProcessor(
         const val FPS_MONITOR_WINDOW_FRAMES = 45
         const val DEGRADE_FPS_THRESHOLD = 14
         const val CRITICAL_LOW_FPS = 10
+
+        /** FR-21: fps must stay >= this for [RECOVERY_STABLE_WINDOWS] to recover. */
+        const val RECOVER_FPS_THRESHOLD = 20
+        const val RECOVERY_STABLE_WINDOWS = 2
         const val FRAME_GAP_RESET_NS = 1_000_000_000L
     }
 }

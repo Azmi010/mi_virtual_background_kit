@@ -372,6 +372,36 @@ internal class MiVirtualBackgroundKitPluginTest {
     }
 
     @Test
+    fun onMethodCall_testSimulateFps_withoutProcessor_errorNoProcessor() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+
+        val call = MethodCall("testSimulateFps", mapOf("fps" to 8.0))
+        val result: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(call, result)
+        Mockito.verify(result).error(
+            Mockito.eq("no_processor"),
+            Mockito.any(),
+            Mockito.isNull(),
+        )
+    }
+
+    @Test
+    fun onMethodCall_testSimulateFps_withProcessor_succeeds() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+        plugin.trackAttacher = { _, _ -> Any() }
+
+        val attachCall = MethodCall("attach", mapOf("trackId" to "track-1"))
+        val attachResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(attachCall, attachResult)
+        Mockito.verify(attachResult).success(null)
+
+        val fpsCall = MethodCall("testSimulateFps", mapOf("fps" to 8.0))
+        val fpsResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(fpsCall, fpsResult)
+        Mockito.verify(fpsResult).success(null)
+    }
+
+    @Test
     fun sendFallbackEvent_deliversPayloadToSink() {
         val plugin = MiVirtualBackgroundKitPlugin()
         val mockSink = Mockito.mock(EventChannel.EventSink::class.java)

@@ -33,6 +33,36 @@ void main() {
       expect(event.targetFps, isNull);
     });
 
+    test('fromMap deserializes recovered event (FR-21)', () {
+      final map = {
+        'action': 'recovered',
+        'reason': 'auto',
+        'segmentationWidth': 256,
+        'targetFps': 30,
+      };
+
+      final event = PerformanceFallbackEvent.fromMap(map);
+
+      expect(event.action, FallbackAction.recovered);
+      expect(event.reason, 'auto');
+      expect(event.segmentationWidth, 256);
+      expect(event.targetFps, 30);
+    });
+
+    test('fromMap maps unknown or missing action to disabled', () {
+      expect(
+        PerformanceFallbackEvent.fromMap({'reason': 'x'}).action,
+        FallbackAction.disabled,
+      );
+      expect(
+        PerformanceFallbackEvent.fromMap({
+          'action': 'somethingNew',
+          'reason': 'x',
+        }).action,
+        FallbackAction.disabled,
+      );
+    });
+
     test('toMap serializes properly', () {
       const event = PerformanceFallbackEvent(
         action: FallbackAction.qualityDegraded,

@@ -87,6 +87,19 @@ class MethodChannelMiVirtualBackgroundKit
     );
   }
 
+  /// T14.4 measurement hook: forces one native performance-window evaluation
+  /// at [fps] (stage-1 degrade below 14, stage-2 disable below 10 with two
+  /// consecutive calls, recovery at >= 20 with `autoRecovery`). Not part of
+  /// the public API; used by `example/integration_test/fallback_recovery_test.dart`.
+  Future<void> testSimulateFps(double fps) async {
+    await _guard(
+      () => methodChannel.invokeMethod<void>(
+        'testSimulateFps',
+        <String, Object?>{'fps': fps},
+      ),
+    );
+  }
+
   @override
   Future<void> dispose() async {
     await _guard(() => methodChannel.invokeMethod<void>('dispose'));

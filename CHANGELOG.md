@@ -6,6 +6,22 @@ diizinkan pada versi **minor** dan entri CHANGELOG-nya diawali **Breaking:**.
 Field baru `BackgroundQuality` bukan breaking selama punya nilai bawaan yang
 mempertahankan perilaku versi sebelumnya. Rincian: ADR 0002 butir 9.
 
+## 0.2.0 (belum dirilis)
+
+* **Breaking:** enum `FallbackAction` bertambah nilai `recovered` (FR-21) —
+  `switch` eksaustif atas `FallbackAction` di kode konsumen perlu satu cabang
+  baru (kebijakan ADR 0002 butir 9: minor + catatan Breaking).
+* Fallback recovery (FR-21): API baru `MiVirtualBackgroundKit.resumeEffect()`
+  menyalakan kembali efek terakhir setelah fallback tahap 2 mematikannya, dan
+  opsi `BackgroundQuality.autoRecovery` (bawaan `false`) memulihkan efek serta
+  kualitas segmentasi yang terdegradasi secara otomatis setelah fps stabil,
+  memancarkan event `FallbackAction.recovered`. Pemulihan otomatis bersifat
+  satu-kali per intervensi manual (latch) agar perangkat lambat tidak
+  berfluktuasi antara aktif/nonaktif.
+* `attach()` tanpa parameter `quality` kini memakai konfigurasi quality
+  terakhir (kamera switch tidak lagi mengembalikan `BackgroundQuality` ke
+  default, termasuk flag `autoRecovery`).
+
 ## 0.1.1
 
 * Fix iOS Swift Package Manager build failure in consumer apps that resolve a

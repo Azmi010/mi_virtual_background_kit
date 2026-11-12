@@ -165,6 +165,24 @@ void main() {
       expect(mock.effects, isEmpty);
     });
 
+    test('re-attach without quality reuses the previous quality', () async {
+      const q = BackgroundQuality(
+        segmentationWidth: 384,
+        autoRecovery: true,
+      );
+      await kit.attach(FakeTrack('track-1'), quality: q);
+      mock.calls.clear();
+
+      // Camera switch path: quality omitted -> remembered config is sent.
+      await kit.attach(FakeTrack('track-2'));
+      expect(mock.lastQuality, equals(q.toMap()));
+    });
+
+    test('first attach without quality sends defaults', () async {
+      await kit.attach(FakeTrack('track-1'));
+      expect(mock.lastQuality, equals(const BackgroundQuality().toMap()));
+    });
+
     test('rejects invalid quality on attach', () async {
       await expectLater(
         kit.attach(
@@ -310,6 +328,51 @@ void main() {
     test('accepts valid boundary blur radius', () async {
       await kit.setEffect(const BlurEffect(radius: 100));
       expect(mock.effects.single['radius'], 100.0);
+    });
+  });
+
+  group('resumeEffect', () {
+    test('is a no-op when not attached', () async {
+      await kit.resumeEffect();
+      expect(mock.calls, isEmpty);
+    });
+
+    test('is a no-op when no effect was ever set', () async {
+      await kit.attach(FakeTrack('t'));
+      mock.calls.clear();
+      await kit.resumeEffect();
+      expect(mock.calls, isEmpty);
+    });
+
+    test('is a no-op when the last effect was NoEffect', () async {
+      await kit.attach(FakeTrack('t'));
+      await kit.setEffect(const NoEffect());
+      mock.calls.clear();
+      await kit.resumeEffect();
+      expect(mock.calls, isEmpty);
+    });
+
+    test('re-applies last quality then last effect (FR-21)', () async {
+      const q = BackgroundQuality(segmentationWidth: 192, autoRecovery: true);
+      await kit.attach(FakeTrack('t'), quality: q);
+      await kit.setEffect(const BlurEffect(radius: 12));
+      mock.calls.clear();
+      mock.effects.clear();
+
+      await kit.resumeEffect();
+
+      expect(
+        mock.calls,
+        containsAllInOrder(<String>['setQuality', 'setEffect']),
+      );
+      expect(mock.lastQuality, equals(q.toMap()));
+      expect(mock.effects.single['type'], 'blur');
+      expect(mock.effects.single['radius'], 12.0);
+    });
+
+    test('throws StateError when kit is disposed', () async {
+      await kit.dispose();
+      await expectLater(kit.resumeEffect(), throwsA(isA<StateError>()));
     });
   });
 

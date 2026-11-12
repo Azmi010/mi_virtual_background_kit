@@ -9,6 +9,7 @@ void main() {
       expect(q.edgeSmoothing, 0.5);
       expect(q.targetFps, 30);
       expect(q.maskTemporalSmoothing, 0.7);
+      expect(q.autoRecovery, isFalse);
     });
 
     test('preset low initializes expected values', () {
@@ -41,12 +42,14 @@ void main() {
         edgeSmoothing: 0.75,
         targetFps: 24,
         maskTemporalSmoothing: 0.4,
+        autoRecovery: true,
       );
       final map = q.toMap();
       expect(map['segmentationWidth'], 320);
       expect(map['edgeSmoothing'], 0.75);
       expect(map['targetFps'], 24);
       expect(map['maskTemporalSmoothing'], 0.4);
+      expect(map['autoRecovery'], isTrue);
     });
 
     test('equality and hashCode work as value object', () {
@@ -58,6 +61,7 @@ void main() {
       final q2 = BackgroundQuality.preset(BackgroundQualityPreset.balanced);
       final q3 = BackgroundQuality.preset(BackgroundQualityPreset.low);
       const q4 = BackgroundQuality(maskTemporalSmoothing: 0.0);
+      const q5 = BackgroundQuality(autoRecovery: true);
 
       expect(q1, equals(q2));
       expect(q1 == q1, isTrue);
@@ -65,6 +69,8 @@ void main() {
       expect(q1.hashCode, equals(q2.hashCode));
       expect(q1, isNot(equals(q3)));
       expect(q1, isNot(equals(q4)));
+      expect(q1, isNot(equals(q5)));
+      expect(q1.hashCode, isNot(equals(q5.hashCode)));
       expect(q4.hashCode, isNot(equals(q1.hashCode)));
     });
 
@@ -74,11 +80,12 @@ void main() {
         edgeSmoothing: 0.3,
         targetFps: 20,
         maskTemporalSmoothing: 0.6,
+        autoRecovery: true,
       );
       expect(
         q.toString(),
         'BackgroundQuality(segmentationWidth: 200, edgeSmoothing: 0.3, '
-        'targetFps: 20, maskTemporalSmoothing: 0.6)',
+        'targetFps: 20, maskTemporalSmoothing: 0.6, autoRecovery: true)',
       );
     });
 

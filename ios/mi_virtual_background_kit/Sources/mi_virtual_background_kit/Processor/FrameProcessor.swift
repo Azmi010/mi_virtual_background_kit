@@ -30,6 +30,10 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
     public static let degradeFpsThreshold: Double = 14.0
     public static let criticalLowFps: Double = 10.0
 
+    /// FR-21: fps must stay >= this for `recoveryStableWindows` to recover.
+    public static let recoverFpsThreshold: Double = 20.0
+    public static let recoveryStableWindows = 2
+
     private let lock = NSLock()
     private var frames: Int = 0
     private var _lastRotation: Int32 = 0
@@ -58,6 +62,23 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
     private var fpsLogValue: Double = 0
     public internal(set) var adaptiveSegmentInterval: Int = 1
     public private(set) var isFallbackDisabled: Bool = false
+
+    // T14.4 (FR-21): fallback recovery state (guarded by `lock`).
+    /// Whether `BackgroundQuality.autoRecovery` is enabled (opt-in).
+    public private(set) var autoRecovery: Bool = false
+    /// Last user-configured segmentation width; stage-1 restore target.
+    private var configuredWidth: Int = 256
+    /// Effect stashed when stage-2 disabled the pipeline; restored on resume.
+    private var stashedEffect: EffectState?
+    /// One-shot latch: cleared on auto-resume, set again only by a manual
+    /// setEffect/setQuality, so a device that cannot keep up stays disabled
+    /// instead of flapping (PRD "tanpa osilasi").
+    private var autoRecoveryArmed: Bool = true
+    /// Consecutive healthy fps windows; drives both recovery paths.
+    private var healthyFpsWindowCount: Int = 0
+    /// True after auto-resume until the first frame composites (FR-21 status).
+    private var awaitingActiveAfterResume: Bool = false
+
     private var lastCompositedTimestampNs: Int64 = 0
 
     // Performance window tracking (FR-12)
@@ -125,42 +146,56 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
     }
 
     public func setBlurEffect(radius: Float) throws {
-        lock.lock()
-        isFallbackDisabled = false
-        currentEffect = .blur(radius: radius)
-        lock.unlock()
+        let resumed = adoptManualEffect(.blur(radius: radius))
         try ensureSegmenter()
+        if resumed { emitRecovered(reason: "manual") }
     }
 
     public func setColorEffect(color: UInt32) throws {
-        lock.lock()
-        isFallbackDisabled = false
-        currentEffect = .color(color: color)
-        lock.unlock()
+        let resumed = adoptManualEffect(.color(color: color))
         try ensureSegmenter()
+        if resumed { emitRecovered(reason: "manual") }
     }
 
     public func setImageEffect(image: UIImage, fit: String) throws {
-        lock.lock()
-        isFallbackDisabled = false
-        currentEffect = .image(image: image, fit: fit)
-        lock.unlock()
+        let resumed = adoptManualEffect(.image(image: image, fit: fit))
         compositor.uploadImage(image)
         try ensureSegmenter()
+        if resumed { emitRecovered(reason: "manual") }
+    }
+
+    /// Adopts a user-chosen effect: leaves the fallback-disabled state, drops
+    /// the stashed effect, and re-arms auto-recovery (manual intervention,
+    /// FR-21). Returns true when this re-enabled an effect stage-2 disabled.
+    private func adoptManualEffect(_ effect: EffectState) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let wasFallbackDisabled = isFallbackDisabled
+        isFallbackDisabled = false
+        stashedEffect = nil
+        autoRecoveryArmed = true
+        awaitingActiveAfterResume = false
+        currentEffect = effect
+        return wasFallbackDisabled
     }
 
     public func setQuality(
         segmentationWidth: Int,
         edgeSmoothing: Float,
         targetFps: Int,
-        maskTemporalSmoothing: Float = 0.7
+        maskTemporalSmoothing: Float = 0.7,
+        autoRecovery: Bool = false
     ) {
         lock.lock()
         defer { lock.unlock() }
+        self.configuredWidth = segmentationWidth
         self.segmentationWidth = segmentationWidth
         self.edgeSmoothing = max(0.0, min(1.0, edgeSmoothing))
         self.targetFps = max(1, min(60, targetFps))
         self.maskTemporalSmoothing = max(0.0, min(1.0, maskTemporalSmoothing))
+        self.autoRecovery = autoRecovery
+        // A quality change is a manual intervention: re-arm auto-recovery (FR-21).
+        self.autoRecoveryArmed = true
         compositor.edgeSmoothing = self.edgeSmoothing
         maskSmoother.reset()
     }
@@ -187,14 +222,27 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
 
     public func clearEffect() {
         lock.lock()
+        // User chose no effect: cancel any pending fallback recovery (FR-21).
+        isFallbackDisabled = false
+        stashedEffect = nil
+        awaitingActiveAfterResume = false
+        resetEffectStateLocked()
+        lock.unlock()
+        maskSmoother.reset()
+        compositor.clearMask()
+    }
+
+    /// Nulls the active effect and resets the performance windows. Leaves the
+    /// fallback flags alone: stage-2 stashes the effect and sets
+    /// `isFallbackDisabled` first. Caller holds `lock`.
+    private func resetEffectStateLocked() {
         currentEffect = nil
         lastCompositedTimestampNs = 0
         windowStartTimestampNs = 0
         windowFrameCount = 0
         lowFpsWindowCount = 0
-        lock.unlock()
-        maskSmoother.reset()
-        compositor.clearMask()
+        healthyFpsWindowCount = 0
+        awaitingActiveAfterResume = false
     }
 
     private func ensureSegmenter() throws {
@@ -238,7 +286,49 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
 
         let effect = currentEffect
         let fallbackDisabled = isFallbackDisabled
+        let watchingFallback = fallbackDisabled && autoRecovery
         lock.unlock()
+
+        let currentTimestamp = frame.timeStampNs > 0 ? frame.timeStampNs : Int64(Date().timeIntervalSince1970 * 1_000_000_000)
+
+        // FR-12/FR-21: monitor fps while an effect is active, or while a
+        // stage-2 fallback watches for auto-recovery.
+        if effect != nil || watchingFallback {
+            lock.lock()
+            // FR-09: background/foreground or camera restart leaves a multi-second
+            // gap; a stale window would measure near-zero fps and falsely trip FR-12.
+            if lastFrameTimestampNs != 0 && currentTimestamp - lastFrameTimestampNs > FrameProcessor.frameGapResetNs {
+                windowStartTimestampNs = 0
+                windowFrameCount = 0
+                lowFpsWindowCount = 0
+                healthyFpsWindowCount = 0
+            }
+            lastFrameTimestampNs = currentTimestamp
+
+            // FR-12: Monitor frame rate across sliding window and evaluate performance fallback
+            var shouldEvaluate = false
+            var measuredFps: Double = 0.0
+            if windowStartTimestampNs == 0 {
+                windowStartTimestampNs = currentTimestamp
+                windowFrameCount = 0
+            } else {
+                windowFrameCount += 1
+                if windowFrameCount >= FrameProcessor.fpsMonitorWindowFrames {
+                    let elapsedSec = Double(currentTimestamp - windowStartTimestampNs) / 1_000_000_000.0
+                    if elapsedSec > 0.0 {
+                        measuredFps = Double(windowFrameCount) / elapsedSec
+                        shouldEvaluate = true
+                    }
+                    windowStartTimestampNs = currentTimestamp
+                    windowFrameCount = 0
+                }
+            }
+            lock.unlock()
+
+            if shouldEvaluate {
+                evaluatePerformance(measuredFps: measuredFps)
+            }
+        }
 
         // 1. Bypass when no effect is applied or disabled by fallback (FR-04, FR-12)
         guard let activeEffect = effect, !fallbackDisabled else {
@@ -250,44 +340,11 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         }
         let pixelBuffer = rtcBuffer.pixelBuffer
 
-        let currentTimestamp = frame.timeStampNs > 0 ? frame.timeStampNs : Int64(Date().timeIntervalSince1970 * 1_000_000_000)
-
-        // FR-09: background/foreground or camera restart leaves a multi-second
-        // gap; a stale window would measure near-zero fps and falsely trip FR-12.
         lock.lock()
-        if lastFrameTimestampNs != 0 && currentTimestamp - lastFrameTimestampNs > FrameProcessor.frameGapResetNs {
-            windowStartTimestampNs = 0
-            windowFrameCount = 0
-            lowFpsWindowCount = 0
-        }
-        lastFrameTimestampNs = currentTimestamp
-
-        // FR-12: Monitor frame rate across sliding window and evaluate performance fallback
-        var shouldEvaluate = false
-        var measuredFps: Double = 0.0
-        if windowStartTimestampNs == 0 {
-            windowStartTimestampNs = currentTimestamp
-            windowFrameCount = 0
-        } else {
-            windowFrameCount += 1
-            if windowFrameCount >= FrameProcessor.fpsMonitorWindowFrames {
-                let elapsedSec = Double(currentTimestamp - windowStartTimestampNs) / 1_000_000_000.0
-                if elapsedSec > 0.0 {
-                    measuredFps = Double(windowFrameCount) / elapsedSec
-                    shouldEvaluate = true
-                }
-                windowStartTimestampNs = currentTimestamp
-                windowFrameCount = 0
-            }
-        }
         let fps = targetFps
         let lastNs = lastCompositedTimestampNs
         let interval = adaptiveSegmentInterval
         lock.unlock()
-
-        if shouldEvaluate {
-            evaluatePerformance(measuredFps: measuredFps)
-        }
 
         if fps < 30 && lastNs > 0 {
             let elapsed = currentTimestamp - lastNs
@@ -318,7 +375,12 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
             if let output = composed {
                 lock.lock()
                 lastCompositedTimestampNs = currentTimestamp
+                let fireActive = awaitingActiveAfterResume
+                awaitingActiveAfterResume = false
                 lock.unlock()
+                if fireActive {
+                    onStatusChange?("active")
+                }
                 return output
             }
         }
@@ -445,6 +507,8 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         }
         isReleased = true
         currentEffect = nil
+        stashedEffect = nil
+        awaitingActiveAfterResume = false
         lock.unlock()
 
         segmentQueue.sync {}
@@ -458,12 +522,40 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
 
     internal func evaluatePerformance(measuredFps: Double) {
         lock.lock()
-        if currentEffect == nil || isReleased {
+        if isReleased {
+            lock.unlock()
+            return
+        }
+
+        // FR-21: while bypassed by stage-2, watch for stable fps to auto-resume.
+        if isFallbackDisabled {
+            if autoRecovery, autoRecoveryArmed,
+               measuredFps >= FrameProcessor.recoverFpsThreshold {
+                healthyFpsWindowCount += 1
+                if healthyFpsWindowCount >= FrameProcessor.recoveryStableWindows {
+                    // One shot: if the device fails again it stays disabled
+                    // until a manual setEffect/setQuality re-arms (no flapping).
+                    autoRecoveryArmed = false
+                    lock.unlock()
+                    resumeFromFallback(reason: "auto")
+                    return
+                }
+                lock.unlock()
+                return
+            }
+            healthyFpsWindowCount = 0
+            lock.unlock()
+            return
+        }
+
+        // User chose no effect: nothing to monitor (FR-04).
+        guard currentEffect != nil else {
             lock.unlock()
             return
         }
 
         if measuredFps < FrameProcessor.degradeFpsThreshold {
+            healthyFpsWindowCount = 0
             lowFpsWindowCount += 1
             if segmentationWidth > 192 {
                 let oldWidth = segmentationWidth
@@ -482,9 +574,14 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
                 ]
                 onFallbackEvent?(event)
             } else if measuredFps < FrameProcessor.criticalLowFps && lowFpsWindowCount >= 2 {
+                // Stage 2: stash the effect before clearing so FR-21 can restore it.
+                stashedEffect = currentEffect
                 isFallbackDisabled = true
+                resetEffectStateLocked()
                 lock.unlock()
-                clearEffect()
+                maskSmoother.reset()
+                compositor.clearMask()
+
                 NSLog("[MiVBG] Critical performance drop: fps=%.1f < %.1f. Auto-disabled effect.", measuredFps, FrameProcessor.criticalLowFps)
                 onStatusChange?("idle")
                 let event: [String: Any] = [
@@ -498,8 +595,65 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
             }
         } else {
             lowFpsWindowCount = 0
+            // FR-21 hysteresis: restore the configured quality only after fps
+            // stays >= recoverFpsThreshold (dead band between 14 and 20).
+            if autoRecovery, measuredFps >= FrameProcessor.recoverFpsThreshold {
+                healthyFpsWindowCount += 1
+                if healthyFpsWindowCount >= FrameProcessor.recoveryStableWindows,
+                   segmentationWidth != configuredWidth {
+                    let restored = configuredWidth
+                    segmentationWidth = restored
+                    healthyFpsWindowCount = 0
+                    lock.unlock()
+                    NSLog("[MiVBG] T144| quality restored width=%d fps=%.1f", restored, measuredFps)
+                    emitRecovered(reason: "auto_quality")
+                    return
+                }
+            } else {
+                healthyFpsWindowCount = 0
+            }
             lock.unlock()
         }
+    }
+
+    /// Restores the effect stashed by stage-2 (FR-21). Emits `recovered`,
+    /// then status `initializing`; the first composited frame emits `active`
+    /// (PRD: disabled -> initializing -> active).
+    private func resumeFromFallback(reason: String) {
+        lock.lock()
+        let stash = stashedEffect
+        isFallbackDisabled = false
+        stashedEffect = nil
+        healthyFpsWindowCount = 0
+        lowFpsWindowCount = 0
+        windowStartTimestampNs = 0
+        windowFrameCount = 0
+        if segmentationWidth != configuredWidth {
+            segmentationWidth = configuredWidth
+        }
+        // Non-nil: stage-2 only disables while an effect is active.
+        currentEffect = stash
+        awaitingActiveAfterResume = true
+        lock.unlock()
+
+        NSLog("[MiVBG] T144| recovered reason=%@", reason)
+        emitRecovered(reason: reason)
+        onStatusChange?("initializing")
+    }
+
+    private func emitRecovered(reason: String) {
+        lock.lock()
+        let width = segmentationWidth
+        let fps = targetFps
+        lock.unlock()
+        let event: [String: Any] = [
+            "event": "fallback",
+            "action": "recovered",
+            "reason": reason,
+            "segmentationWidth": width,
+            "targetFps": fps
+        ]
+        onFallbackEvent?(event)
     }
 
     public func simulatePerformanceDrop(_ measuredFps: Double) {

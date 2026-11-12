@@ -122,6 +122,13 @@ void main() {
       expect(log.single.arguments, <String, Object?>{'stage': 'still'});
     });
 
+    test('testSimulateFps sends fps value (T14.4 hook)', () async {
+      mockHandler((_) async => null);
+      await platform.testSimulateFps(8.0);
+      expect(log.single.method, 'testSimulateFps');
+      expect(log.single.arguments, <String, Object?>{'fps': 8.0});
+    });
+
     test('setEffect sends serialized map', () async {
       mockHandler((_) async => null);
       await platform.setEffect(<String, Object?>{

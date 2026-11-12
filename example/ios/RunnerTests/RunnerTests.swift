@@ -1215,6 +1215,180 @@ class RunnerTests: XCTestCase {
     processor.release()
   }
 
+  // MARK: - T14.4 (FR-21): fallback recovery
+
+  private final class RecoveryLog {
+    var events: [[String: Any]] = []
+    var statuses: [String] = []
+
+    func recoveredReasons() -> [String?] {
+      events.compactMap { event -> String? in
+        (event["action"] as? String) == "recovered" ? (event["reason"] as? String) : nil
+      }
+    }
+  }
+
+  private func makeRecoveryFixture(autoRecovery: Bool) throws -> (FrameProcessor, RecoveryLog) {
+    let log = RecoveryLog()
+    let processor = FrameProcessor(
+      compositor: MockCompositor(),
+      segmenterProvider: { MockSegmenter() },
+      onStatusChange: { status in log.statuses.append(status) },
+      onFallbackEvent: { event in log.events.append(event) }
+    )
+    processor.setQuality(
+      segmentationWidth: 256, edgeSmoothing: 0.5, targetFps: 30,
+      maskTemporalSmoothing: 0.7, autoRecovery: autoRecovery
+    )
+    try processor.setBlurEffect(radius: 10.0)
+    return (processor, log)
+  }
+
+  /// Drives stage-1 degrade (256 -> 192) then stage-2 disable.
+  private func forceDisable(_ processor: FrameProcessor) {
+    processor.simulatePerformanceDrop(8.0)
+    processor.simulatePerformanceDrop(8.0)
+  }
+
+  func testAutoRecovery_stage2_autoRestoresEffectWhenFpsStable() throws {
+    let (processor, log) = try makeRecoveryFixture(autoRecovery: true)
+
+    forceDisable(processor)
+    XCTAssertTrue(processor.isFallbackDisabled)
+    XCTAssertNil(processor.currentEffect)
+    XCTAssertEqual(log.statuses.last, "idle")
+
+    // One healthy window is not enough (hysteresis needs 2).
+    processor.simulatePerformanceDrop(25.0)
+    XCTAssertTrue(processor.isFallbackDisabled)
+
+    processor.simulatePerformanceDrop(25.0)
+    XCTAssertFalse(processor.isFallbackDisabled)
+    XCTAssertNotNil(processor.currentEffect)
+    // Degraded width restored together with the effect.
+    XCTAssertEqual(processor.segmentationWidth, 256)
+    XCTAssertEqual(log.statuses.last, "initializing")
+    XCTAssertEqual(log.recoveredReasons(), ["auto"])
+
+    processor.release()
+  }
+
+  func testAutoRecovery_latchedAfterAutoResume_furtherFailureStaysDisabled() throws {
+    let (processor, log) = try makeRecoveryFixture(autoRecovery: true)
+
+    forceDisable(processor)
+    processor.simulatePerformanceDrop(25.0)
+    processor.simulatePerformanceDrop(25.0)
+    XCTAssertFalse(processor.isFallbackDisabled)
+
+    // Device fails again right after the auto resume: one-shot latch.
+    forceDisable(processor)
+    XCTAssertTrue(processor.isFallbackDisabled)
+    processor.simulatePerformanceDrop(25.0)
+    processor.simulatePerformanceDrop(25.0)
+    XCTAssertTrue(processor.isFallbackDisabled)
+    XCTAssertNil(processor.currentEffect)
+    XCTAssertEqual(log.recoveredReasons(), ["auto"])
+
+    processor.release()
+  }
+
+  func testAutoRecovery_off_noRecoveryWhileDisabled() throws {
+    let (processor, log) = try makeRecoveryFixture(autoRecovery: false)
+
+    forceDisable(processor)
+    XCTAssertTrue(processor.isFallbackDisabled)
+
+    processor.simulatePerformanceDrop(30.0)
+    processor.simulatePerformanceDrop(30.0)
+    XCTAssertTrue(processor.isFallbackDisabled)
+    XCTAssertNil(processor.currentEffect)
+    XCTAssertTrue(log.recoveredReasons().isEmpty)
+
+    processor.release()
+  }
+
+  func testStage1_qualityRestoredAfterStableHealthyFps() throws {
+    let (processor, log) = try makeRecoveryFixture(autoRecovery: true)
+
+    processor.simulatePerformanceDrop(12.0)
+    XCTAssertEqual(processor.segmentationWidth, 192)
+    XCTAssertEqual(log.events.last?["action"] as? String, "qualityDegraded")
+
+    // Dead band: fps in (14, 20) neither degrades nor restores.
+    processor.simulatePerformanceDrop(17.0)
+    XCTAssertEqual(processor.segmentationWidth, 192)
+
+    processor.simulatePerformanceDrop(21.0)
+    processor.simulatePerformanceDrop(21.0)
+    XCTAssertEqual(processor.segmentationWidth, 256)
+    XCTAssertEqual(log.recoveredReasons(), ["auto_quality"])
+    XCTAssertFalse(processor.isFallbackDisabled)
+    XCTAssertNotNil(processor.currentEffect)
+
+    processor.release()
+  }
+
+  func testDeadBandFps_producesNoEvents() throws {
+    let (processor, log) = try makeRecoveryFixture(autoRecovery: true)
+
+    processor.simulatePerformanceDrop(15.0)
+    processor.simulatePerformanceDrop(19.0)
+    processor.simulatePerformanceDrop(16.0)
+
+    XCTAssertTrue(log.events.isEmpty)
+    XCTAssertEqual(processor.segmentationWidth, 256)
+    XCTAssertFalse(processor.isFallbackDisabled)
+    XCTAssertNotNil(processor.currentEffect)
+
+    processor.release()
+  }
+
+  func testManualSetEffect_rearmsLatchAndEmitsRecoveredManual() throws {
+    let (processor, log) = try makeRecoveryFixture(autoRecovery: true)
+
+    forceDisable(processor)
+    processor.simulatePerformanceDrop(25.0)
+    processor.simulatePerformanceDrop(25.0)
+    forceDisable(processor)
+    processor.simulatePerformanceDrop(25.0)
+    processor.simulatePerformanceDrop(25.0)
+    XCTAssertTrue(processor.isFallbackDisabled)  // latched
+
+    // Manual setEffect (what resumeEffect() sends) re-arms and reports.
+    try processor.setBlurEffect(radius: 12.0)
+    XCTAssertFalse(processor.isFallbackDisabled)
+    XCTAssertNotNil(processor.currentEffect)
+
+    // Armed again: the next failure cycle can auto-recover once more.
+    forceDisable(processor)
+    XCTAssertTrue(processor.isFallbackDisabled)
+    processor.simulatePerformanceDrop(25.0)
+    processor.simulatePerformanceDrop(25.0)
+    XCTAssertFalse(processor.isFallbackDisabled)
+
+    XCTAssertEqual(log.recoveredReasons(), ["auto", "manual", "auto"])
+
+    processor.release()
+  }
+
+  func testClearEffect_whileDisabled_cancelsPendingRecovery() throws {
+    let (processor, log) = try makeRecoveryFixture(autoRecovery: true)
+
+    forceDisable(processor)
+    XCTAssertTrue(processor.isFallbackDisabled)
+
+    // User chose "none": recovery must not resurrect the old effect.
+    processor.clearEffect()
+    XCTAssertFalse(processor.isFallbackDisabled)
+    processor.simulatePerformanceDrop(30.0)
+    processor.simulatePerformanceDrop(30.0)
+    XCTAssertNil(processor.currentEffect)
+    XCTAssertTrue(log.recoveredReasons().isEmpty)
+
+    processor.release()
+  }
+
   func testPluginFallbackEvent_forwardedToEventChannel() {
     let plugin = MiVirtualBackgroundKitPlugin()
     var fallbackEvents: [[String: Any]] = []
@@ -1377,6 +1551,40 @@ class RunnerTests: XCTestCase {
     plugin.handle(stage) { result in
       XCTAssertNil(result)
       exp2.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+  }
+
+  func testTestSimulateFps_withoutProcessor_errorNoProcessor() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+
+    let call = FlutterMethodCall(methodName: "testSimulateFps", arguments: ["fps": 8.0])
+    let exp = expectation(description: "testSimulateFps errors")
+    plugin.handle(call) { result in
+      guard let err = result as? FlutterError else {
+        XCTFail("Expected FlutterError, got \(String(describing: result))")
+        return
+      }
+      XCTAssertEqual(err.code, "no_processor")
+      exp.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+  }
+
+  func testTestSimulateFps_withProcessor_succeeds() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    plugin.trackAttacher = { _, _ in NSObject() }
+
+    let attach = FlutterMethodCall(methodName: "attach", arguments: ["trackId": "t1"])
+    let expAttach = expectation(description: "attach")
+    plugin.handle(attach) { _ in expAttach.fulfill() }
+    waitForExpectations(timeout: 1)
+
+    let call = FlutterMethodCall(methodName: "testSimulateFps", arguments: ["fps": 25.0])
+    let exp = expectation(description: "testSimulateFps")
+    plugin.handle(call) { result in
+      XCTAssertNil(result)
+      exp.fulfill()
     }
     waitForExpectations(timeout: 1)
   }

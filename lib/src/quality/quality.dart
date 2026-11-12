@@ -27,11 +27,17 @@ class BackgroundQuality {
   ///   segmentation runs, in range `[0.0, 1.0]`. Higher values steady the
   ///   silhouette but trail fast motion; 0.0 disables smoothing (v0.1
   ///   behavior). Default is 0.7.
+  /// - [autoRecovery]: When true, the kit automatically restores a degraded
+  ///   quality or a fallback-disabled effect once the frame rate stays
+  ///   stable, emitting `FallbackAction.recovered` events (FR-21). Recovery
+  ///   is one-shot per manual intervention so a device that cannot keep up
+  ///   stops flapping. Default is false: only `resumeEffect()` re-enables.
   const BackgroundQuality({
     this.segmentationWidth = 256,
     this.edgeSmoothing = 0.5,
     this.targetFps = 30,
     this.maskTemporalSmoothing = 0.7,
+    this.autoRecovery = false,
   });
 
   /// Low quality preset for lower-end devices.
@@ -78,12 +84,20 @@ class BackgroundQuality {
   /// In range `[0.0, 1.0]`; 0.0 disables smoothing (identical to v0.1).
   final double maskTemporalSmoothing;
 
+  /// Automatic recovery from performance fallback (FR-21).
+  ///
+  /// When true, restores degraded quality and a disabled effect after the
+  /// frame rate stays stable, emitting `FallbackAction.recovered`. Default
+  /// false: recovery happens only through `resumeEffect()`.
+  final bool autoRecovery;
+
   /// Serializes to a platform channel map.
   Map<String, Object?> toMap() => <String, Object?>{
         'segmentationWidth': segmentationWidth,
         'edgeSmoothing': edgeSmoothing,
         'targetFps': targetFps,
         'maskTemporalSmoothing': maskTemporalSmoothing,
+        'autoRecovery': autoRecovery,
       };
 
   @override
@@ -94,7 +108,8 @@ class BackgroundQuality {
           segmentationWidth == other.segmentationWidth &&
           edgeSmoothing == other.edgeSmoothing &&
           targetFps == other.targetFps &&
-          maskTemporalSmoothing == other.maskTemporalSmoothing;
+          maskTemporalSmoothing == other.maskTemporalSmoothing &&
+          autoRecovery == other.autoRecovery;
 
   @override
   int get hashCode => Object.hash(
@@ -102,9 +117,10 @@ class BackgroundQuality {
         edgeSmoothing,
         targetFps,
         maskTemporalSmoothing,
+        autoRecovery,
       );
 
   @override
   String toString() =>
-      'BackgroundQuality(segmentationWidth: $segmentationWidth, edgeSmoothing: $edgeSmoothing, targetFps: $targetFps, maskTemporalSmoothing: $maskTemporalSmoothing)';
+      'BackgroundQuality(segmentationWidth: $segmentationWidth, edgeSmoothing: $edgeSmoothing, targetFps: $targetFps, maskTemporalSmoothing: $maskTemporalSmoothing, autoRecovery: $autoRecovery)';
 }

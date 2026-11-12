@@ -217,8 +217,10 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
         let edgeSm = (qualityMap["edgeSmoothing"] as? NSNumber)?.floatValue ?? 0.5
         let fps = (qualityMap["targetFps"] as? NSNumber)?.intValue ?? 30
         let mts = (qualityMap["maskTemporalSmoothing"] as? NSNumber)?.floatValue ?? 0.7
+        let autoRec = (qualityMap["autoRecovery"] as? NSNumber)?.boolValue ?? false
         processor.setQuality(
-          segmentationWidth: segW, edgeSmoothing: edgeSm, targetFps: fps, maskTemporalSmoothing: mts
+          segmentationWidth: segW, edgeSmoothing: edgeSm, targetFps: fps,
+          maskTemporalSmoothing: mts, autoRecovery: autoRec
         )
       }
 
@@ -302,8 +304,10 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
       let edgeSm = (args["edgeSmoothing"] as? NSNumber)?.floatValue ?? 0.5
       let fps = (args["targetFps"] as? NSNumber)?.intValue ?? 30
       let mts = (args["maskTemporalSmoothing"] as? NSNumber)?.floatValue ?? 0.7
+      let autoRec = (args["autoRecovery"] as? NSNumber)?.boolValue ?? false
       frameProcessor?.setQuality(
-        segmentationWidth: segW, edgeSmoothing: edgeSm, targetFps: fps, maskTemporalSmoothing: mts
+        segmentationWidth: segW, edgeSmoothing: edgeSm, targetFps: fps,
+        maskTemporalSmoothing: mts, autoRecovery: autoRec
       )
       result(nil)
 
@@ -329,6 +333,18 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
       let stage = (call.arguments as? [String: Any])?["stage"] as? String ?? "-"
       processor.setTestStage(stage)
       print("T133| SET_STAGE st=\(stage)")
+      result(nil)
+
+    // T14.4 measurement hook: forces one performance-window evaluation
+    // (fallback recovery test only, mirrors testSetSmoothing).
+    case "testSimulateFps":
+      guard let processor = frameProcessor else {
+        result(FlutterError(code: "no_processor", message: "kit not attached", details: nil))
+        return
+      }
+      let fps = (call.arguments as? [String: Any])?["fps"] as? Double ?? 0
+      processor.simulatePerformanceDrop(fps)
+      print("T144| SIM_FPS fps=\(fps)")
       result(nil)
 
     case "detach":

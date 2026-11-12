@@ -27,6 +27,7 @@ class MiVirtualBackgroundKit {
   bool _attached = false;
   bool _disposed = false;
   VirtualBackgroundEffect? _lastEffect;
+  BackgroundQuality? _lastQuality;
 
   /// Whether the current device supports background processing.
   Future<bool> isSupported() => _platform.isSupported();
@@ -43,19 +44,26 @@ class MiVirtualBackgroundKit {
 
   /// Attaches the processor to a local camera [track] with optional [quality] settings.
   ///
+  /// When [quality] is omitted, the kit reuses the quality of the previous
+  /// `attach`/`setQuality` call, so a camera switch keeps the configuration
+  /// (including `autoRecovery`). The first attach falls back to
+  /// [BackgroundQuality] defaults.
+  ///
   /// Throws [InvalidTrackException] if the track is null or has no id.
   /// Throws [UnsupportedPlatformException] if the platform rejects the track.
   Future<void> attach(
     MediaStreamTrack track, {
-    BackgroundQuality quality = const BackgroundQuality(),
+    BackgroundQuality? quality,
   }) async {
     _ensureNotDisposed();
     final id = track.id;
     if (id == null || id.isEmpty) {
       throw const InvalidTrackException('track has no id');
     }
-    _validateQuality(quality);
-    await _platform.attach(id, quality: quality.toMap());
+    final resolved = quality ?? _lastQuality ?? const BackgroundQuality();
+    _validateQuality(resolved);
+    await _platform.attach(id, quality: resolved.toMap());
+    _lastQuality = resolved;
     _attached = true;
     // FR-09: native re-attach builds a fresh processor; re-apply last effect
     // so camera switch keeps the background without a second setEffect call.
@@ -70,6 +78,7 @@ class MiVirtualBackgroundKit {
     _ensureNotDisposed();
     _validateQuality(quality);
     await _platform.setQuality(quality.toMap());
+    _lastQuality = quality;
   }
 
   /// Applies [effect] to subsequent frames. Idempotent; does not restart the
@@ -82,6 +91,27 @@ class MiVirtualBackgroundKit {
     _validateEffect(effect);
     await _platform.setEffect(effect.toMap());
     _lastEffect = effect;
+  }
+
+  /// Turns the last applied effect back on after a performance fallback
+  /// disabled it (FR-21).
+  ///
+  /// Re-applies the last quality configuration (restoring a degraded
+  /// segmentation resolution) and then the last effect. Native emits a
+  /// `FallbackAction.recovered` event when the effect was actually disabled;
+  /// otherwise the call is a silent no-op, so it is safe to call any time.
+  ///
+  /// Does nothing when the kit is detached or no effect was ever set.
+  Future<void> resumeEffect() async {
+    _ensureNotDisposed();
+    if (!_attached) return;
+    final effect = _lastEffect;
+    if (effect == null || effect is NoEffect) return;
+    final quality = _lastQuality;
+    if (quality != null) {
+      await _platform.setQuality(quality.toMap());
+    }
+    await _platform.setEffect(effect.toMap());
   }
 
   /// Detaches the processor. Idempotent: safe to call when not attached or

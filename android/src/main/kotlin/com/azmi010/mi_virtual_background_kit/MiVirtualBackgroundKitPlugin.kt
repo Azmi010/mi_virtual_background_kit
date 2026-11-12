@@ -149,7 +149,8 @@ class MiVirtualBackgroundKitPlugin :
                     val edgeSm = (qualityMap["edgeSmoothing"] as? Number)?.toFloat() ?: 0.5f
                     val fps = (qualityMap["targetFps"] as? Number)?.toInt() ?: 30
                     val mts = (qualityMap["maskTemporalSmoothing"] as? Number)?.toFloat() ?: 0.7f
-                    processor.setQuality(segW, edgeSm, fps, mts)
+                    val autoRec = qualityMap["autoRecovery"] as? Boolean ?: false
+                    processor.setQuality(segW, edgeSm, fps, mts, autoRec)
                 }
                 val track = trackAttacher(trackId, processor)
                 if (track == null) {
@@ -226,7 +227,8 @@ class MiVirtualBackgroundKitPlugin :
                 val edgeSm = (call.argument<Number>("edgeSmoothing"))?.toFloat() ?: 0.5f
                 val fps = (call.argument<Number>("targetFps"))?.toInt() ?: 30
                 val mts = (call.argument<Number>("maskTemporalSmoothing"))?.toFloat() ?: 0.7f
-                frameProcessor?.setQuality(segW, edgeSm, fps, mts)
+                val autoRec = call.argument<Boolean>("autoRecovery") ?: false
+                frameProcessor?.setQuality(segW, edgeSm, fps, mts, autoRec)
                 result.success(null)
             }
             // T14.2/T14.3 measurement hooks (example flicker-test page only).
@@ -252,6 +254,19 @@ class MiVirtualBackgroundKitPlugin :
                 val stage = call.argument<String>("stage") ?: "-"
                 processor.setTestStage(stage)
                 android.util.Log.i("MiVBG", "T133| SET_STAGE st=$stage")
+                result.success(null)
+            }
+            // T14.4 measurement hook: forces one performance-window evaluation
+            // (fallback recovery test only, mirrors testSetSmoothing).
+            "testSimulateFps" -> {
+                val processor = frameProcessor
+                if (processor == null) {
+                    result.error("no_processor", "kit not attached", null)
+                    return
+                }
+                val fps = call.argument<Double>("fps") ?: 0.0
+                processor.simulatePerformanceDrop(fps)
+                android.util.Log.i("MiVBG", "T144| SIM_FPS fps=$fps")
                 result.success(null)
             }
             "detach" -> {

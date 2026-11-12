@@ -670,4 +670,199 @@ internal class FrameProcessorTest {
 
         processor.release()
     }
+
+    // --- T14.4 (FR-21): fallback recovery ---
+
+    private class RecoveryFixture(
+        val processor: FrameProcessor,
+        val events: MutableList<Map<String, Any?>>,
+        val statuses: MutableList<String>,
+    )
+
+    private fun createRecoveryFixture(autoRecovery: Boolean): RecoveryFixture {
+        val events = mutableListOf<Map<String, Any?>>()
+        val statuses = mutableListOf<String>()
+        val processor = FrameProcessor(
+            segmenterProvider = { FakeSegmenter() },
+            compositorProvider = { FakeCompositor() },
+            onStatusChange = { statuses.add(it) },
+            onFallbackEvent = { events.add(it) },
+        )
+        processor.setQuality(256, 0.5f, 30, 0.7f, autoRecovery)
+        processor.setBlurEffect(10.0f)
+        return RecoveryFixture(processor, events, statuses)
+    }
+
+    /** Drives stage-1 degrade (256 -> 192) then stage-2 disable. */
+    private fun forceDisable(processor: FrameProcessor) {
+        processor.simulatePerformanceDrop(8.0)
+        processor.simulatePerformanceDrop(8.0)
+    }
+
+    private fun RecoveryFixture.recoveredReasons(): List<Any?> =
+        events.filter { it["action"] == "recovered" }.map { it["reason"] }
+
+    @Test
+    fun autoRecovery_stage2_autoRestoresEffectWhenFpsStable() {
+        val f = createRecoveryFixture(autoRecovery = true)
+
+        forceDisable(f.processor)
+        assertTrue(f.processor.isFallbackDisabled)
+        assertNull(f.processor.currentEffect)
+        assertEquals("idle", f.statuses.last())
+
+        // One healthy window is not enough (hysteresis needs 2).
+        f.processor.simulatePerformanceDrop(25.0)
+        assertTrue(f.processor.isFallbackDisabled)
+
+        f.processor.simulatePerformanceDrop(25.0)
+        assertFalse(f.processor.isFallbackDisabled)
+        assertNotNull(f.processor.currentEffect)
+        // Degraded width restored together with the effect.
+        assertEquals(256, f.processor.segmentationWidth)
+        assertEquals("initializing", f.statuses.last())
+        assertEquals(listOf<Any?>("auto"), f.recoveredReasons())
+
+        f.processor.release()
+    }
+
+    @Test
+    fun autoRecovery_latchedAfterAutoResume_furtherFailureStaysDisabled() {
+        val f = createRecoveryFixture(autoRecovery = true)
+
+        forceDisable(f.processor)
+        f.processor.simulatePerformanceDrop(25.0)
+        f.processor.simulatePerformanceDrop(25.0)
+        assertFalse(f.processor.isFallbackDisabled)
+
+        // Device fails again right after the auto resume: one-shot latch.
+        forceDisable(f.processor)
+        assertTrue(f.processor.isFallbackDisabled)
+        f.processor.simulatePerformanceDrop(25.0)
+        f.processor.simulatePerformanceDrop(25.0)
+        assertTrue(f.processor.isFallbackDisabled)
+        assertNull(f.processor.currentEffect)
+        assertEquals(listOf<Any?>("auto"), f.recoveredReasons())
+
+        f.processor.release()
+    }
+
+    @Test
+    fun autoRecovery_off_noRecoveryWhileDisabled() {
+        val f = createRecoveryFixture(autoRecovery = false)
+
+        forceDisable(f.processor)
+        assertTrue(f.processor.isFallbackDisabled)
+
+        f.processor.simulatePerformanceDrop(30.0)
+        f.processor.simulatePerformanceDrop(30.0)
+        assertTrue(f.processor.isFallbackDisabled)
+        assertNull(f.processor.currentEffect)
+        assertTrue(f.recoveredReasons().isEmpty())
+
+        f.processor.release()
+    }
+
+    @Test
+    fun stage1_qualityRestoredAfterStableHealthyFps() {
+        val f = createRecoveryFixture(autoRecovery = true)
+
+        f.processor.simulatePerformanceDrop(12.0)
+        assertEquals(192, f.processor.segmentationWidth)
+        assertEquals("qualityDegraded", f.events.last()["action"])
+
+        // Dead band: fps in (14, 20) neither degrades nor restores.
+        f.processor.simulatePerformanceDrop(17.0)
+        assertEquals(192, f.processor.segmentationWidth)
+
+        f.processor.simulatePerformanceDrop(21.0)
+        f.processor.simulatePerformanceDrop(21.0)
+        assertEquals(256, f.processor.segmentationWidth)
+        assertEquals(listOf<Any?>("auto_quality"), f.recoveredReasons())
+        assertFalse(f.processor.isFallbackDisabled)
+        assertNotNull(f.processor.currentEffect)
+
+        f.processor.release()
+    }
+
+    @Test
+    fun stage1_qualityStaysDegraded_whenAutoRecoveryOff() {
+        val f = createRecoveryFixture(autoRecovery = false)
+
+        f.processor.simulatePerformanceDrop(12.0)
+        assertEquals(192, f.processor.segmentationWidth)
+
+        f.processor.simulatePerformanceDrop(30.0)
+        f.processor.simulatePerformanceDrop(30.0)
+        assertEquals(192, f.processor.segmentationWidth)
+        assertTrue(f.recoveredReasons().isEmpty())
+
+        f.processor.release()
+    }
+
+    @Test
+    fun deadBandFps_producesNoEvents() {
+        val f = createRecoveryFixture(autoRecovery = true)
+
+        f.processor.simulatePerformanceDrop(15.0)
+        f.processor.simulatePerformanceDrop(19.0)
+        f.processor.simulatePerformanceDrop(16.0)
+
+        assertTrue(f.events.isEmpty())
+        assertEquals(256, f.processor.segmentationWidth)
+        assertFalse(f.processor.isFallbackDisabled)
+        assertNotNull(f.processor.currentEffect)
+
+        f.processor.release()
+    }
+
+    @Test
+    fun manualSetEffect_rearmsLatchAndEmitsRecoveredManual() {
+        val f = createRecoveryFixture(autoRecovery = true)
+
+        forceDisable(f.processor)
+        f.processor.simulatePerformanceDrop(25.0)
+        f.processor.simulatePerformanceDrop(25.0)
+        forceDisable(f.processor)
+        f.processor.simulatePerformanceDrop(25.0)
+        f.processor.simulatePerformanceDrop(25.0)
+        assertTrue(f.processor.isFallbackDisabled) // latched
+
+        // Manual setEffect (what resumeEffect() sends) re-arms and reports.
+        f.processor.setBlurEffect(12.0f)
+        assertFalse(f.processor.isFallbackDisabled)
+        assertNotNull(f.processor.currentEffect)
+
+        // Armed again: the next failure cycle can auto-recover once more.
+        forceDisable(f.processor)
+        assertTrue(f.processor.isFallbackDisabled)
+        f.processor.simulatePerformanceDrop(25.0)
+        f.processor.simulatePerformanceDrop(25.0)
+        assertFalse(f.processor.isFallbackDisabled)
+
+        assertEquals(
+            listOf<Any?>("auto", "manual", "auto"),
+            f.recoveredReasons(),
+        )
+
+        f.processor.release()
+    }
+
+    @Test
+    fun clearEffect_whileDisabled_cancelsPendingRecovery() {
+        val f = createRecoveryFixture(autoRecovery = true)
+
+        forceDisable(f.processor)
+        assertTrue(f.processor.isFallbackDisabled)
+
+        // User chose "none": recovery must not resurrect the old effect.
+        f.processor.clearEffect()
+        assertFalse(f.processor.isFallbackDisabled)
+        f.processor.simulatePerformanceDrop(30.0)
+        f.processor.simulatePerformanceDrop(30.0)
+        assertNull(f.processor.currentEffect)
+        assertTrue(f.recoveredReasons().isEmpty())
+
+        f.processor.release()
+    }
 }
