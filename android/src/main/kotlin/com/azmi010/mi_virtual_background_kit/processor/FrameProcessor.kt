@@ -74,6 +74,23 @@ class FrameProcessor(
     private var segmenter: MaskSegmenter? = null
     private var segmenterInitialized = false
 
+    // T14.5 measurement hook: overrides the bundled model asset (null =
+    // production MODEL_ASSET). The example's T14.5 page A/Bs landscape
+    // against the legacy square model; not public API.
+    @Volatile
+    private var testModelAsset: String? = null
+
+    /** Asset the current [segmenter] instance was built from. */
+    @Volatile
+    private var segmenterAssetInUse: String? = null
+
+    /** Last inference duration reported by the segmentation worker, ms. */
+    @Volatile
+    private var lastInferenceMs: Long = -1
+
+    /** Capture-thread only: of the previously logged mask, ns (gap metric). */
+    private var lastMaskLogNs: Long = 0
+
     private val segmentExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val isSegmenting = AtomicBoolean(false)
 
@@ -276,17 +293,51 @@ class FrameProcessor(
         compositor.clearMask()
     }
 
+    /**
+     * Ensures a segmenter exists for the wanted model asset. Switching
+     * [testModelAsset] closes the old instance on the segment worker (never
+     * mid-inference) and builds a fresh one on the next call.
+     */
     private fun ensureSegmenter() {
-        if (!segmenterInitialized) {
-            segmenterInitialized = true
+        val wanted = testModelAsset ?: Segmenter.MODEL_ASSET
+        if (segmenterInitialized && segmenterAssetInUse == wanted) return
+        if (segmenterInitialized) {
+            // Close on the segment worker so a running segment() finishes first.
             try {
-                segmenter = segmenterProvider?.invoke()
-                    ?: context?.let { Segmenter(it) }
+                segmentExecutor.submit {
+                    try {
+                        segmenter?.close()
+                    } catch (t: Throwable) {
+                        Log.w(TAG, "Error closing segmenter: $t")
+                    }
+                    segmenter = null
+                }.get(2, java.util.concurrent.TimeUnit.SECONDS)
             } catch (t: Throwable) {
-                Log.e(TAG, "Failed to initialize Segmenter: $t")
-                throw t
+                Log.w(TAG, "Segmenter close did not finish cleanly: $t")
             }
+            segmenterInitialized = false
         }
+        segmenterInitialized = true
+        try {
+            segmenter = segmenterProvider?.invoke()
+                ?: context?.let { Segmenter(it, wanted) }
+            segmenterAssetInUse = wanted
+        } catch (t: Throwable) {
+            segmenterInitialized = false
+            segmenterAssetInUse = null
+            Log.e(TAG, "Failed to initialize Segmenter: $t")
+            throw t
+        }
+    }
+
+    /**
+     * T14.5 measurement hook: selects the model asset (`null` = production
+     * [Segmenter.MODEL_ASSET]) and rebuilds the segmenter. Not public API.
+     */
+    fun setTestModel(modelAsset: String?) {
+        testModelAsset = modelAsset
+        ensureSegmenter()
+        Log.i(TAG, "T145| SET_MODEL model=${modelAsset ?: Segmenter.MODEL_ASSET}")
     }
 
     private val isReleased = AtomicBoolean(false)
@@ -428,6 +479,7 @@ class FrameProcessor(
                             val startInferenceNs = System.nanoTime()
                             val resultMask = seg.segment(bmp)
                             val inferenceMs = (System.nanoTime() - startInferenceNs) / 1_000_000
+                            lastInferenceMs = inferenceMs
 
                             // Adaptively update interval: fast hardware tracks at ~15 Hz, slower at ~6 or ~3 Hz
                             adaptiveSegmentInterval = when {
@@ -667,6 +719,10 @@ class FrameProcessor(
         d0: Float,
     ) {
         val now = System.nanoTime()
+        // T14.5 freshness metrics: gap since the previous logged mask,
+        // last inference cost, and the live adaptive scheduling interval.
+        val gap = if (lastMaskLogNs == 0L) -1 else (now - lastMaskLogNs) / 1_000_000
+        lastMaskLogNs = now
         if (fpsLogNs == 0L) {
             fpsLogNs = now
             fpsLogFrames = frames.get()
@@ -679,7 +735,8 @@ class FrameProcessor(
             TAG,
             "T133| m=$mode v=${fmt(value, 2)} d0=${fmt(d0, 2)} st=$testStage " +
                 "rev=${res.rev} chg=${res.chg} d=${fmt(res.dPct, 1)} lag=${fmt(res.lagPct, 1)} " +
-                "px=${res.alpha.size} us=${res.us} fps=${fmt(fpsLogValue, 1)}",
+                "px=${res.alpha.size} us=${res.us} fps=${fmt(fpsLogValue, 1)} " +
+                "gap=$gap inf=$lastInferenceMs iv=$adaptiveSegmentInterval",
         )
     }
 

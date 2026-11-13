@@ -1,0 +1,224 @@
+11-13 14:55:15.941 I/flutter (12407): T145| RUN start
+11-13 14:55:16.950 I/flutter (12407): T145| KIT_STATUS initializing
+11-13 14:55:16.953 I/flutter (12407): T145| KIT_STATUS active
+11-13 14:55:17.689 I/flutter (12407): T145| KIT_STATUS active
+11-13 14:55:17.692 I/flutter (12407): T145| ACTION setup DONE track=22d1f9e6-b872-443e-bced-92802b13eac7
+11-13 14:55:18.321 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=- rev=0 chg=0 d=-1.0 lag=0.0 px=49152 us=137652 fps=0.0 gap=-1 inf=375 iv=10
+11-13 14:55:18.323 I/MiVBG   (12407): T145| SET_MODEL model=selfie_segmenter.tflite
+11-13 14:55:18.347 I/MiVBG   (12407): T133| SET_STAGE st=sq256
+11-13 14:55:18.349 I/flutter (12407): T145| CONFIG sq256 START model=selfie_segmenter.tflite width=256
+11-13 14:55:19.166 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=0 chg=0 d=-1.0 lag=0.0 px=49152 us=170617 fps=0.0 gap=846 inf=310 iv=10
+11-13 14:55:19.524 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=0 chg=0 d=0.2 lag=0.1 px=49152 us=140228 fps=18.3 gap=357 inf=152 iv=10
+11-13 14:55:19.926 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=0 chg=63 d=0.2 lag=0.2 px=49152 us=69361 fps=18.3 gap=402 inf=133 iv=8
+11-13 14:55:20.137 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=2 chg=59 d=0.2 lag=0.1 px=49152 us=29093 fps=18.3 gap=210 inf=149 iv=8
+11-13 14:55:20.384 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=39 chg=81 d=0.6 lag=0.4 px=49152 us=34877 fps=18.3 gap=247 inf=132 iv=8
+11-13 14:55:20.701 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=36 chg=231 d=1.2 lag=0.7 px=49152 us=27733 fps=25.5 gap=316 inf=143 iv=8
+11-13 14:55:21.011 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=5 chg=409 d=1.3 lag=0.7 px=49152 us=29208 fps=25.5 gap=310 inf=126 iv=8
+11-13 14:55:21.341 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=4 chg=281 d=0.9 lag=0.5 px=49152 us=25542 fps=25.5 gap=330 inf=141 iv=8
+11-13 14:55:21.704 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=6 chg=87 d=0.6 lag=0.4 px=49152 us=32730 fps=24.9 gap=362 inf=166 iv=10
+11-13 14:55:21.911 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=32 chg=49 d=0.4 lag=0.3 px=49152 us=29970 fps=24.9 gap=205 inf=144 iv=8
+11-13 14:55:22.353 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=22 chg=61 d=0.6 lag=0.4 px=49152 us=29779 fps=24.9 gap=443 inf=160 iv=10
+11-13 14:55:22.807 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=7 chg=199 d=0.6 lag=0.4 px=49152 us=32886 fps=23.6 gap=454 inf=146 iv=8
+11-13 14:55:23.046 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=34 chg=65 d=0.4 lag=0.3 px=49152 us=31500 fps=23.6 gap=239 inf=184 iv=10
+11-13 14:55:23.238 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=16 chg=42 d=0.3 lag=0.2 px=49152 us=28500 fps=23.6 gap=191 inf=151 iv=10
+11-13 14:55:23.586 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=10 chg=26 d=0.2 lag=0.2 px=49152 us=26197 fps=23.6 gap=347 inf=145 iv=8
+11-13 14:55:23.990 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=11 chg=36 d=0.2 lag=0.1 px=49152 us=24868 fps=24.5 gap=403 inf=136 iv=8
+11-13 14:55:24.348 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=19 chg=44 d=0.4 lag=0.3 px=49152 us=25244 fps=24.5 gap=358 inf=171 iv=10
+11-13 14:55:24.790 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=1 chg=147 d=0.6 lag=0.4 px=49152 us=26362 fps=24.5 gap=442 inf=123 iv=8
+11-13 14:55:24.985 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=11 chg=35 d=0.3 lag=0.2 px=49152 us=26312 fps=24.5 gap=194 inf=155 iv=10
+11-13 14:55:25.189 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=24 chg=44 d=0.3 lag=0.2 px=49152 us=32963 fps=25.0 gap=204 inf=134 iv=8
+11-13 14:55:25.593 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=14 chg=36 d=0.3 lag=0.2 px=49152 us=30368 fps=25.0 gap=403 inf=141 iv=8
+11-13 14:55:25.903 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=9 chg=47 d=0.2 lag=0.1 px=49152 us=32037 fps=25.0 gap=309 inf=139 iv=8
+11-13 14:55:26.237 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=19 chg=27 d=0.2 lag=0.1 px=49152 us=24886 fps=24.8 gap=333 inf=129 iv=8
+11-13 14:55:26.567 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=8 chg=30 d=0.3 lag=0.2 px=49152 us=31978 fps=24.8 gap=330 inf=139 iv=8
+11-13 14:55:26.872 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=5 chg=100 d=0.4 lag=0.2 px=49152 us=25458 fps=24.8 gap=305 inf=132 iv=8
+11-13 14:55:27.190 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=70 chg=86 d=0.2 lag=0.2 px=49152 us=28464 fps=24.8 gap=317 inf=132 iv=8
+11-13 14:55:27.518 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=20 chg=40 d=0.2 lag=0.2 px=49152 us=28011 fps=25.0 gap=328 inf=158 iv=10
+11-13 14:55:27.994 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=8 chg=45 d=0.2 lag=0.2 px=49152 us=25211 fps=25.0 gap=475 inf=151 iv=10
+11-13 14:55:28.389 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=23 chg=41 d=0.2 lag=0.2 px=49152 us=29358 fps=25.0 gap=394 inf=141 iv=8
+11-13 14:55:28.800 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=3 chg=62 d=0.3 lag=0.2 px=49152 us=39201 fps=25.0 gap=411 inf=132 iv=8
+11-13 14:55:29.109 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=17 chg=43 d=0.2 lag=0.1 px=49152 us=29403 fps=25.0 gap=309 inf=128 iv=8
+11-13 14:55:29.430 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=24 chg=34 d=0.2 lag=0.1 px=49152 us=27463 fps=25.0 gap=321 inf=143 iv=8
+11-13 14:55:29.761 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=4 chg=31 d=0.3 lag=0.2 px=49152 us=30144 fps=25.0 gap=330 inf=131 iv=8
+11-13 14:55:30.081 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=8 chg=80 d=0.3 lag=0.2 px=49152 us=26655 fps=25.0 gap=320 inf=137 iv=8
+11-13 14:55:30.373 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=15 chg=62 d=0.2 lag=0.1 px=49152 us=26171 fps=25.0 gap=292 inf=131 iv=8
+11-13 14:55:30.717 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=36 chg=56 d=0.2 lag=0.1 px=49152 us=32958 fps=25.0 gap=343 inf=135 iv=8
+11-13 14:55:31.026 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=8 chg=45 d=0.3 lag=0.2 px=49152 us=34454 fps=25.0 gap=308 inf=127 iv=8
+11-13 14:55:31.322 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq256 rev=7 chg=47 d=0.2 lag=0.1 px=49152 us=25556 fps=25.0 gap=297 inf=124 iv=8
+11-13 14:55:31.418 I/flutter (12407): T145| CONFIG sq256 DONE
+11-13 14:55:31.430 I/MiVBG   (12407): T145| SET_MODEL model=selfie_segmenter.tflite
+11-13 14:55:31.469 I/MiVBG   (12407): T133| SET_STAGE st=sq144
+11-13 14:55:31.472 I/flutter (12407): T145| CONFIG sq144 START model=selfie_segmenter.tflite width=144
+11-13 14:55:31.658 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=0 chg=0 d=-1.0 lag=0.0 px=15552 us=1111 fps=25.0 gap=335 inf=119 iv=8
+11-13 14:55:31.982 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=0 chg=0 d=0.2 lag=0.1 px=15552 us=9327 fps=25.0 gap=323 inf=123 iv=8
+11-13 14:55:32.306 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=0 chg=28 d=0.2 lag=0.1 px=15552 us=8482 fps=25.0 gap=323 inf=125 iv=8
+11-13 14:55:32.627 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=0 chg=12 d=0.2 lag=0.2 px=15552 us=8020 fps=25.3 gap=321 inf=119 iv=8
+11-13 14:55:32.907 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=9 chg=19 d=0.2 lag=0.1 px=15552 us=15540 fps=25.3 gap=278 inf=115 iv=8
+11-13 14:55:33.266 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=6 chg=8 d=0.3 lag=0.2 px=15552 us=7976 fps=25.3 gap=360 inf=127 iv=8
+11-13 14:55:33.554 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=2 chg=14 d=0.2 lag=0.1 px=15552 us=7933 fps=25.3 gap=288 inf=126 iv=8
+11-13 14:55:33.902 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=8 chg=11 d=0.2 lag=0.2 px=15552 us=11998 fps=25.1 gap=348 inf=119 iv=8
+11-13 14:55:34.187 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=3 chg=18 d=0.4 lag=0.2 px=15552 us=9119 fps=25.1 gap=284 inf=120 iv=8
+11-13 14:55:34.512 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=2 chg=17 d=0.2 lag=0.2 px=15552 us=7991 fps=25.1 gap=324 inf=128 iv=8
+11-13 14:55:34.844 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=13 chg=22 d=0.3 lag=0.2 px=15552 us=8799 fps=25.1 gap=332 inf=133 iv=8
+11-13 14:55:35.152 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=2 chg=13 d=0.3 lag=0.2 px=15552 us=7882 fps=24.8 gap=308 inf=129 iv=8
+11-13 14:55:35.560 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=3 chg=26 d=0.2 lag=0.2 px=15552 us=7907 fps=24.8 gap=404 inf=143 iv=8
+11-13 14:55:35.879 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=22 chg=25 d=0.2 lag=0.2 px=15552 us=24541 fps=24.8 gap=321 inf=129 iv=8
+11-13 14:55:36.221 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=1 chg=9 d=0.2 lag=0.1 px=15552 us=12145 fps=23.4 gap=342 inf=134 iv=8
+11-13 14:55:36.513 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=1 chg=12 d=0.2 lag=0.1 px=15552 us=13674 fps=23.4 gap=292 inf=127 iv=8
+11-13 14:55:36.837 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=5 chg=14 d=0.3 lag=0.2 px=15552 us=8404 fps=23.4 gap=323 inf=127 iv=8
+11-13 14:55:37.194 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=3 chg=26 d=0.3 lag=0.2 px=15552 us=11907 fps=23.4 gap=357 inf=142 iv=8
+11-13 14:55:37.471 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=7 chg=32 d=0.4 lag=0.2 px=15552 us=11465 fps=24.9 gap=271 inf=122 iv=8
+11-13 14:55:37.752 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=23 chg=30 d=0.3 lag=0.2 px=15552 us=7888 fps=24.9 gap=285 inf=115 iv=8
+11-13 14:55:38.114 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=6 chg=17 d=0.2 lag=0.2 px=15552 us=7993 fps=24.9 gap=361 inf=126 iv=8
+11-13 14:55:38.423 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=8 chg=13 d=0.2 lag=0.1 px=15552 us=8007 fps=24.9 gap=308 inf=144 iv=8
+11-13 14:55:38.746 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=10 chg=13 d=0.2 lag=0.2 px=15552 us=12366 fps=25.8 gap=323 inf=123 iv=8
+11-13 14:55:39.075 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=4 chg=26 d=0.2 lag=0.1 px=15552 us=18085 fps=25.8 gap=328 inf=121 iv=8
+11-13 14:55:39.396 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=4 chg=14 d=0.3 lag=0.2 px=15552 us=8014 fps=25.8 gap=321 inf=112 iv=8
+11-13 14:55:39.706 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=7 chg=18 d=0.3 lag=0.2 px=15552 us=11327 fps=25.8 gap=309 inf=137 iv=8
+11-13 14:55:40.000 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=3 chg=30 d=0.3 lag=0.2 px=15552 us=7878 fps=24.7 gap=293 inf=123 iv=8
+11-13 14:55:40.355 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=10 chg=22 d=0.4 lag=0.2 px=15552 us=9198 fps=24.7 gap=355 inf=128 iv=8
+11-13 14:55:40.676 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=12 chg=20 d=0.2 lag=0.2 px=15552 us=13045 fps=24.7 gap=320 inf=123 iv=8
+11-13 14:55:40.979 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=9 chg=15 d=0.3 lag=0.2 px=15552 us=8307 fps=24.7 gap=303 inf=136 iv=8
+11-13 14:55:41.317 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=8 chg=21 d=0.3 lag=0.2 px=15552 us=8045 fps=25.0 gap=338 inf=118 iv=8
+11-13 14:55:41.601 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=14 chg=19 d=0.2 lag=0.2 px=15552 us=12633 fps=25.0 gap=283 inf=125 iv=8
+11-13 14:55:41.930 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=5 chg=12 d=0.2 lag=0.1 px=15552 us=8071 fps=25.0 gap=329 inf=121 iv=8
+11-13 14:55:42.269 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=1 chg=9 d=0.2 lag=0.2 px=15552 us=9153 fps=25.0 gap=338 inf=112 iv=8
+11-13 14:55:42.603 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=6 chg=13 d=0.2 lag=0.2 px=15552 us=8020 fps=24.9 gap=334 inf=124 iv=8
+11-13 14:55:42.914 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=5 chg=20 d=0.3 lag=0.2 px=15552 us=8531 fps=24.9 gap=310 inf=124 iv=8
+11-13 14:55:43.239 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=2 chg=23 d=0.2 lag=0.2 px=15552 us=8032 fps=24.9 gap=325 inf=131 iv=8
+11-13 14:55:43.520 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=15 chg=22 d=0.2 lag=0.2 px=15552 us=7963 fps=24.9 gap=280 inf=107 iv=8
+11-13 14:55:43.878 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=3 chg=13 d=0.3 lag=0.2 px=15552 us=9094 fps=25.1 gap=357 inf=126 iv=8
+11-13 14:55:44.197 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=4 chg=27 d=0.3 lag=0.2 px=15552 us=14268 fps=25.1 gap=319 inf=124 iv=8
+11-13 14:55:44.514 I/flutter (12407): T145| CONFIG sq144 DONE
+11-13 14:55:44.518 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=sq144 rev=12 chg=14 d=0.2 lag=0.1 px=15552 us=12950 fps=25.1 gap=320 inf=122 iv=8
+11-13 14:55:44.645 I/MiVBG   (12407): T145| SET_MODEL model=selfie_segmenter_landscape.tflite
+11-13 14:55:44.683 I/MiVBG   (12407): T133| SET_STAGE st=ls256
+11-13 14:55:44.686 I/flutter (12407): T145| CONFIG ls256 START model=landscape width=256
+11-13 14:55:44.838 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=0 chg=0 d=-1.0 lag=0.0 px=15552 us=19090 fps=25.1 gap=319 inf=103 iv=8
+11-13 14:55:45.120 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=0 chg=0 d=-1.0 lag=0.0 px=49152 us=3282 fps=24.9 gap=284 inf=82 iv=5
+11-13 14:55:45.376 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=0 chg=0 d=0.8 lag=0.5 px=49152 us=28243 fps=24.9 gap=255 inf=75 iv=5
+11-13 14:55:45.586 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=0 chg=385 d=1.0 lag=0.6 px=49152 us=28876 fps=24.9 gap=210 inf=79 iv=5
+11-13 14:55:45.822 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=9 chg=155 d=0.7 lag=0.4 px=49152 us=25372 fps=24.9 gap=235 inf=86 iv=8
+11-13 14:55:46.107 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=57 chg=379 d=1.2 lag=0.7 px=49152 us=26267 fps=24.9 gap=284 inf=96 iv=8
+11-13 14:55:46.425 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=286 chg=329 d=0.8 lag=0.5 px=49152 us=27338 fps=24.5 gap=317 inf=91 iv=8
+11-13 14:55:46.741 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=92 chg=144 d=0.7 lag=0.4 px=49152 us=34237 fps=24.5 gap=315 inf=91 iv=8
+11-13 14:55:47.030 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=30 chg=256 d=0.8 lag=0.5 px=49152 us=24778 fps=24.5 gap=288 inf=93 iv=8
+11-13 14:55:47.383 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=152 chg=189 d=0.6 lag=0.4 px=49152 us=31480 fps=24.5 gap=353 inf=96 iv=8
+11-13 14:55:47.702 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=36 chg=132 d=0.8 lag=0.5 px=49152 us=28638 fps=25.1 gap=318 inf=86 iv=8
+11-13 14:55:48.029 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=62 chg=166 d=0.8 lag=0.5 px=49152 us=32267 fps=25.1 gap=327 inf=88 iv=8
+11-13 14:55:48.341 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=73 chg=159 d=0.6 lag=0.4 px=49152 us=29334 fps=25.1 gap=311 inf=88 iv=8
+11-13 14:55:48.651 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=96 chg=158 d=0.5 lag=0.3 px=49152 us=27792 fps=25.1 gap=310 inf=78 iv=5
+11-13 14:55:48.830 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=20 chg=94 d=0.6 lag=0.4 px=49152 us=27077 fps=24.8 gap=178 inf=98 iv=8
+11-13 14:55:48.994 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=33 chg=142 d=0.6 lag=0.4 px=49152 us=37192 fps=24.8 gap=164 inf=92 iv=8
+11-13 14:55:49.308 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=47 chg=86 d=0.5 lag=0.3 px=49152 us=24788 fps=24.8 gap=313 inf=88 iv=8
+11-13 14:55:49.629 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=48 chg=129 d=0.5 lag=0.3 px=49152 us=31362 fps=24.8 gap=321 inf=90 iv=8
+11-13 14:55:49.945 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=17 chg=105 d=0.6 lag=0.4 px=49152 us=27161 fps=25.1 gap=316 inf=87 iv=8
+11-13 14:55:50.256 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=41 chg=167 d=0.7 lag=0.4 px=49152 us=28471 fps=25.1 gap=310 inf=90 iv=8
+11-13 14:55:50.539 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=155 chg=258 d=0.7 lag=0.4 px=49152 us=27055 fps=25.1 gap=283 inf=76 iv=5
+11-13 14:55:50.802 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=42 chg=88 d=0.6 lag=0.4 px=49152 us=33050 fps=25.1 gap=260 inf=91 iv=8
+11-13 14:55:51.002 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=3 chg=143 d=0.6 lag=0.4 px=49152 us=35058 fps=24.6 gap=202 inf=133 iv=8
+11-13 14:55:51.239 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=54 chg=81 d=0.4 lag=0.3 px=49152 us=26150 fps=24.6 gap=236 inf=94 iv=8
+11-13 14:55:51.537 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=31 chg=115 d=0.5 lag=0.3 px=49152 us=25337 fps=24.6 gap=299 inf=84 iv=5
+11-13 14:55:51.797 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=38 chg=129 d=0.6 lag=0.4 px=49152 us=26061 fps=24.6 gap=260 inf=93 iv=8
+11-13 14:55:52.192 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=50 chg=178 d=0.6 lag=0.4 px=49152 us=24911 fps=25.2 gap=394 inf=93 iv=8
+11-13 14:55:52.502 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=13 chg=118 d=0.9 lag=0.5 px=49152 us=28082 fps=25.2 gap=310 inf=85 iv=5
+11-13 14:55:52.662 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=61 chg=190 d=0.6 lag=0.4 px=49152 us=26904 fps=25.2 gap=159 inf=102 iv=8
+11-13 14:55:52.834 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=63 chg=154 d=1.0 lag=0.6 px=49152 us=31170 fps=25.2 gap=171 inf=104 iv=8
+11-13 14:55:53.150 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=6 chg=244 d=1.4 lag=0.7 px=49152 us=28212 fps=25.2 gap=316 inf=87 iv=8
+11-13 14:55:53.478 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=215 chg=407 d=1.3 lag=0.7 px=49152 us=34303 fps=24.9 gap=328 inf=92 iv=8
+11-13 14:55:53.803 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=75 chg=170 d=0.9 lag=0.5 px=49152 us=31417 fps=24.9 gap=324 inf=92 iv=8
+11-13 14:55:54.115 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=47 chg=94 d=0.6 lag=0.4 px=49152 us=25554 fps=24.9 gap=311 inf=90 iv=8
+11-13 14:55:54.432 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=67 chg=77 d=0.6 lag=0.4 px=49152 us=28928 fps=24.9 gap=317 inf=86 iv=8
+11-13 14:55:54.759 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=4 chg=214 d=1.2 lag=0.7 px=49152 us=27007 fps=25.0 gap=327 inf=105 iv=8
+11-13 14:55:55.077 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=23 chg=254 d=0.9 lag=0.5 px=49152 us=24945 fps=25.0 gap=318 inf=86 iv=8
+11-13 14:55:55.394 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=178 chg=270 d=0.8 lag=0.5 px=49152 us=27519 fps=25.0 gap=317 inf=91 iv=8
+11-13 14:55:55.713 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=72 chg=194 d=1.1 lag=0.6 px=49152 us=29512 fps=25.0 gap=318 inf=92 iv=8
+11-13 14:55:56.036 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=33 chg=168 d=0.9 lag=0.5 px=49152 us=25005 fps=25.1 gap=322 inf=110 iv=8
+11-13 14:55:56.357 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=118 chg=189 d=0.6 lag=0.4 px=49152 us=24586 fps=25.1 gap=321 inf=90 iv=8
+11-13 14:55:56.670 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=45 chg=172 d=1.0 lag=0.6 px=49152 us=27106 fps=25.1 gap=312 inf=98 iv=8
+11-13 14:55:57.004 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=9 chg=237 d=0.7 lag=0.4 px=49152 us=26221 fps=25.1 gap=333 inf=96 iv=8
+11-13 14:55:57.316 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=108 chg=154 d=0.6 lag=0.4 px=49152 us=27425 fps=25.0 gap=312 inf=91 iv=8
+11-13 14:55:57.645 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls256 rev=51 chg=199 d=0.8 lag=0.5 px=49152 us=28163 fps=25.0 gap=328 inf=93 iv=8
+11-13 14:55:57.740 I/flutter (12407): T145| CONFIG ls256 DONE
+11-13 14:55:57.744 I/MiVBG   (12407): T145| SET_MODEL model=selfie_segmenter_landscape.tflite
+11-13 14:55:57.786 I/MiVBG   (12407): T133| SET_STAGE st=ls144
+11-13 14:55:57.788 I/flutter (12407): T145| CONFIG ls144 START model=landscape width=144
+11-13 14:55:57.901 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=0 chg=0 d=-1.0 lag=0.0 px=15552 us=948 fps=25.0 gap=256 inf=74 iv=5
+11-13 14:55:58.019 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=0 chg=0 d=1.0 lag=0.6 px=15552 us=11425 fps=25.0 gap=118 inf=77 iv=5
+11-13 14:55:58.179 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=0 chg=103 d=0.6 lag=0.4 px=15552 us=9490 fps=25.0 gap=159 inf=76 iv=5
+11-13 14:55:58.420 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=34 chg=66 d=1.2 lag=0.7 px=15552 us=11334 fps=25.4 gap=240 inf=84 iv=5
+11-13 14:55:58.585 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=21 chg=104 d=1.0 lag=0.6 px=15552 us=15744 fps=25.4 gap=165 inf=68 iv=5
+11-13 14:55:58.788 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=60 chg=96 d=0.9 lag=0.5 px=15552 us=7870 fps=25.4 gap=202 inf=74 iv=5
+11-13 14:55:58.990 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=29 chg=64 d=0.8 lag=0.5 px=15552 us=8840 fps=25.4 gap=202 inf=68 iv=5
+11-13 14:55:59.181 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=24 chg=63 d=0.9 lag=0.6 px=15552 us=10937 fps=25.4 gap=190 inf=60 iv=5
+11-13 14:55:59.381 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=34 chg=76 d=0.7 lag=0.5 px=15552 us=9817 fps=25.4 gap=200 inf=67 iv=5
+11-13 14:55:59.589 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=67 chg=179 d=1.4 lag=0.7 px=15552 us=7881 fps=24.8 gap=208 inf=64 iv=5
+11-13 14:55:59.779 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=91 chg=97 d=0.9 lag=0.5 px=15552 us=12127 fps=24.8 gap=189 inf=72 iv=5
+11-13 14:55:59.981 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=47 chg=92 d=1.0 lag=0.6 px=15552 us=10423 fps=24.8 gap=201 inf=68 iv=5
+11-13 14:56:00.231 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=20 chg=82 d=0.9 lag=0.6 px=15552 us=7892 fps=24.8 gap=249 inf=81 iv=5
+11-13 14:56:00.425 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=64 chg=128 d=1.2 lag=0.7 px=15552 us=17228 fps=24.8 gap=194 inf=79 iv=5
+11-13 14:56:00.586 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=38 chg=65 d=0.9 lag=0.5 px=15552 us=10053 fps=24.8 gap=158 inf=67 iv=5
+11-13 14:56:00.832 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=20 chg=87 d=0.9 lag=0.6 px=15552 us=7838 fps=24.9 gap=248 inf=86 iv=8
+11-13 14:56:01.138 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=32 chg=53 d=0.8 lag=0.5 px=15552 us=8930 fps=24.9 gap=305 inf=71 iv=5
+11-13 14:56:01.381 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=4 chg=30 d=0.6 lag=0.4 px=15552 us=9585 fps=24.9 gap=243 inf=66 iv=5
+11-13 14:56:01.588 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=9 chg=35 d=0.7 lag=0.4 px=15552 us=15497 fps=24.9 gap=207 inf=70 iv=5
+11-13 14:56:01.793 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=2 chg=41 d=1.0 lag=0.6 px=15552 us=9175 fps=24.9 gap=204 inf=69 iv=5
+11-13 14:56:01.987 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=4 chg=53 d=0.7 lag=0.4 px=15552 us=12042 fps=25.1 gap=194 inf=68 iv=5
+11-13 14:56:02.199 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=39 chg=51 d=0.5 lag=0.3 px=15552 us=13812 fps=25.1 gap=211 inf=83 iv=5
+11-13 14:56:02.396 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=5 chg=16 d=0.9 lag=0.5 px=15552 us=15307 fps=25.1 gap=196 inf=71 iv=5
+11-13 14:56:02.592 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=2 chg=106 d=1.0 lag=0.6 px=15552 us=8950 fps=25.1 gap=195 inf=72 iv=5
+11-13 14:56:02.784 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=6 chg=69 d=1.2 lag=0.7 px=15552 us=8438 fps=25.1 gap=190 inf=66 iv=5
+11-13 14:56:03.034 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=23 chg=64 d=0.9 lag=0.5 px=15552 us=21238 fps=24.8 gap=252 inf=82 iv=5
+11-13 14:56:03.195 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=7 chg=43 d=1.2 lag=0.7 px=15552 us=8021 fps=24.8 gap=161 inf=72 iv=5
+11-13 14:56:03.427 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=25 chg=55 d=1.0 lag=0.6 px=15552 us=10673 fps=24.8 gap=232 inf=73 iv=5
+11-13 14:56:03.589 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=1 chg=46 d=1.1 lag=0.6 px=15552 us=8700 fps=24.8 gap=160 inf=64 iv=5
+11-13 14:56:03.795 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=7 chg=57 d=0.8 lag=0.5 px=15552 us=8057 fps=24.8 gap=206 inf=67 iv=5
+11-13 14:56:03.991 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=18 chg=71 d=0.8 lag=0.5 px=15552 us=9361 fps=24.8 gap=196 inf=75 iv=5
+11-13 14:56:04.186 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=30 chg=39 d=0.6 lag=0.4 px=15552 us=12177 fps=25.2 gap=194 inf=78 iv=5
+11-13 14:56:04.408 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=2 chg=45 d=0.9 lag=0.6 px=15552 us=8602 fps=25.2 gap=221 inf=75 iv=5
+11-13 14:56:04.598 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=20 chg=55 d=1.0 lag=0.6 px=15552 us=8154 fps=25.2 gap=190 inf=63 iv=5
+11-13 14:56:04.797 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=43 chg=114 d=1.0 lag=0.6 px=15552 us=8403 fps=25.2 gap=199 inf=69 iv=5
+11-13 14:56:05.000 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=21 chg=47 d=0.8 lag=0.5 px=15552 us=8312 fps=25.2 gap=202 inf=76 iv=5
+11-13 14:56:05.230 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=13 chg=28 d=0.5 lag=0.3 px=15552 us=11626 fps=24.9 gap=229 inf=77 iv=5
+11-13 14:56:05.398 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=15 chg=58 d=0.9 lag=0.5 px=15552 us=9877 fps=24.9 gap=168 inf=76 iv=5
+11-13 14:56:05.636 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=16 chg=55 d=0.6 lag=0.4 px=15552 us=8672 fps=24.9 gap=238 inf=79 iv=5
+11-13 14:56:05.788 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=16 chg=30 d=0.6 lag=0.4 px=15552 us=8691 fps=24.9 gap=151 inf=63 iv=5
+11-13 14:56:06.039 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=15 chg=36 d=0.6 lag=0.4 px=15552 us=11203 fps=24.9 gap=251 inf=82 iv=5
+11-13 14:56:06.198 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=17 chg=46 d=0.8 lag=0.5 px=15552 us=8082 fps=24.9 gap=159 inf=72 iv=5
+11-13 14:56:06.394 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=11 chg=65 d=0.6 lag=0.4 px=15552 us=11582 fps=24.9 gap=195 inf=67 iv=5
+11-13 14:56:06.602 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=32 chg=49 d=0.5 lag=0.3 px=15552 us=7855 fps=24.9 gap=208 inf=83 iv=5
+11-13 14:56:06.796 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=5 chg=44 d=1.1 lag=0.6 px=15552 us=8061 fps=24.9 gap=193 inf=73 iv=5
+11-13 14:56:07.027 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=13 chg=98 d=0.9 lag=0.5 px=15552 us=9439 fps=24.9 gap=231 inf=66 iv=5
+11-13 14:56:07.218 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=15 chg=52 d=0.7 lag=0.4 px=15552 us=7900 fps=24.9 gap=190 inf=95 iv=8
+11-13 14:56:07.532 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=37 chg=85 d=0.8 lag=0.5 px=15552 us=7890 fps=24.6 gap=314 inf=86 iv=8
+11-13 14:56:07.899 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=11 chg=49 d=0.7 lag=0.4 px=15552 us=10304 fps=24.6 gap=366 inf=89 iv=8
+11-13 14:56:08.155 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=20 chg=97 d=1.1 lag=0.6 px=15552 us=10073 fps=24.6 gap=256 inf=65 iv=5
+11-13 14:56:08.403 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=30 chg=80 d=1.3 lag=0.7 px=15552 us=13346 fps=24.6 gap=247 inf=64 iv=5
+11-13 14:56:08.599 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=51 chg=113 d=1.2 lag=0.7 px=15552 us=11029 fps=25.3 gap=197 inf=69 iv=5
+11-13 14:56:08.805 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=67 chg=83 d=0.9 lag=0.5 px=15552 us=8687 fps=25.3 gap=205 inf=65 iv=5
+11-13 14:56:09.043 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=44 chg=275 d=1.9 lag=0.9 px=15552 us=11496 fps=25.3 gap=238 inf=82 iv=5
+11-13 14:56:09.244 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=181 chg=187 d=1.1 lag=0.6 px=15552 us=9018 fps=25.3 gap=200 inf=98 iv=8
+11-13 14:56:09.477 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=47 chg=88 d=1.0 lag=0.6 px=15552 us=12276 fps=25.3 gap=232 inf=88 iv=8
+11-13 14:56:09.792 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=43 chg=111 d=1.0 lag=0.6 px=15552 us=8446 fps=25.2 gap=315 inf=69 iv=5
+11-13 14:56:10.039 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=48 chg=105 d=1.0 lag=0.6 px=15552 us=8096 fps=25.2 gap=247 inf=68 iv=5
+11-13 14:56:10.202 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=22 chg=66 d=0.8 lag=0.5 px=15552 us=12089 fps=25.2 gap=163 inf=74 iv=5
+11-13 14:56:10.438 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=12 chg=56 d=1.0 lag=0.6 px=15552 us=13144 fps=25.2 gap=236 inf=73 iv=5
+11-13 14:56:10.602 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=29 chg=76 d=0.9 lag=0.5 px=15552 us=11211 fps=25.2 gap=163 inf=68 iv=5
+11-13 14:56:10.803 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=59 chg=102 d=0.8 lag=0.5 px=15552 us=8855 fps=24.7 gap=201 inf=78 iv=5
+11-13 14:56:10.824 I/flutter (12407): T145| CONFIG ls144 DONE
+11-13 14:56:10.826 I/flutter (12407): T145| STAGE ALL DONE
+11-13 14:56:11.012 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=81 chg=138 d=1.2 lag=0.7 px=15552 us=8470 fps=24.7 gap=208 inf=77 iv=5
+11-13 14:56:11.236 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=95 chg=153 d=1.0 lag=0.6 px=15552 us=10066 fps=24.7 gap=223 inf=70 iv=5
+11-13 14:56:11.410 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=91 chg=108 d=1.0 lag=0.6 px=15552 us=9248 fps=24.7 gap=174 inf=69 iv=5
+11-13 14:56:11.645 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=36 chg=101 d=0.9 lag=0.5 px=15552 us=9262 fps=24.7 gap=235 inf=81 iv=5
+11-13 14:56:11.816 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=24 chg=35 d=0.9 lag=0.5 px=15552 us=17909 fps=24.7 gap=170 inf=61 iv=5
+11-13 14:56:12.051 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=26 chg=40 d=0.9 lag=0.5 px=15552 us=12012 fps=24.7 gap=235 inf=67 iv=5
+11-13 14:56:12.212 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=3 chg=49 d=0.9 lag=0.6 px=15552 us=8229 fps=24.7 gap=161 inf=63 iv=5
+11-13 14:56:12.413 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=14 chg=76 d=1.0 lag=0.6 px=15552 us=8277 fps=24.7 gap=200 inf=69 iv=5
+11-13 14:56:12.610 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=31 chg=498 d=3.2 lag=1.0 px=15552 us=8186 fps=24.7 gap=196 inf=72 iv=5
+11-13 14:56:12.802 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=115 chg=1124 d=7.8 lag=0.0 px=15552 us=12953 fps=24.7 gap=192 inf=74 iv=5
+11-13 14:56:13.035 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=0 chg=0 d=1.2 lag=0.7 px=15552 us=9165 fps=25.4 gap=232 inf=70 iv=5
+11-13 14:56:13.210 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=0 chg=330 d=2.0 lag=0.9 px=15552 us=8954 fps=25.4 gap=175 inf=71 iv=5
+11-13 14:56:13.412 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=249 chg=249 d=1.4 lag=0.7 px=15552 us=8008 fps=25.4 gap=201 inf=71 iv=5
+11-13 14:56:13.607 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=4 chg=349 d=2.7 lag=1.0 px=15552 us=12611 fps=25.4 gap=195 inf=66 iv=5
+11-13 14:56:13.794 I/MiVBG   (12407): T133| m=adaptive v=0.70 d0=0.06 st=ls144 rev=25 chg=479 d=4.0 lag=0.9 px=15552 us=7866 fps=25.4 gap=187 inf=62 iv=5

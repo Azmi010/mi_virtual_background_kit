@@ -1523,6 +1523,20 @@ class RunnerTests: XCTestCase {
       XCTAssertEqual(err.code, "no_processor")
       exp2.fulfill()
     }
+
+    // T14.5: the model swap is Android-only; iOS still guards no_processor.
+    let model = FlutterMethodCall(
+      methodName: "testSetModel", arguments: ["model": "selfie_segmenter.tflite"]
+    )
+    let exp3 = expectation(description: "testSetModel errors")
+    plugin.handle(model) { result in
+      guard let err = result as? FlutterError else {
+        XCTFail("Expected FlutterError, got \(String(describing: result))")
+        return
+      }
+      XCTAssertEqual(err.code, "no_processor")
+      exp3.fulfill()
+    }
     waitForExpectations(timeout: 1)
   }
 
@@ -1551,6 +1565,17 @@ class RunnerTests: XCTestCase {
     plugin.handle(stage) { result in
       XCTAssertNil(result)
       exp2.fulfill()
+    }
+    waitForExpectations(timeout: 1)
+
+    // T14.5: accepted as a no-op on iOS (model swap is Android-only).
+    let model = FlutterMethodCall(
+      methodName: "testSetModel", arguments: ["model": "selfie_segmenter.tflite"]
+    )
+    let exp3 = expectation(description: "testSetModel")
+    plugin.handle(model) { result in
+      XCTAssertNil(result)
+      exp3.fulfill()
     }
     waitForExpectations(timeout: 1)
   }

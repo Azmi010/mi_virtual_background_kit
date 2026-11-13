@@ -345,6 +345,15 @@ internal class MiVirtualBackgroundKitPluginTest {
             Mockito.any(),
             Mockito.isNull(),
         )
+
+        val modelCall = MethodCall("testSetModel", mapOf("model" to "selfie_segmenter.tflite"))
+        val modelResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(modelCall, modelResult)
+        Mockito.verify(modelResult).error(
+            Mockito.eq("no_processor"),
+            Mockito.any(),
+            Mockito.isNull(),
+        )
     }
 
     @Test
@@ -369,6 +378,14 @@ internal class MiVirtualBackgroundKitPluginTest {
         val stageResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
         plugin.onMethodCall(stageCall, stageResult)
         Mockito.verify(stageResult).success(null)
+
+        val modelCall = MethodCall(
+            "testSetModel",
+            mapOf<String, Any?>("model" to "selfie_segmenter.tflite"),
+        )
+        val modelResult: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(modelCall, modelResult)
+        Mockito.verify(modelResult).success(null)
     }
 
     @Test

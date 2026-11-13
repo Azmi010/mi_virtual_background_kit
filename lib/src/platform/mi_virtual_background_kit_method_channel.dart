@@ -100,6 +100,20 @@ class MethodChannelMiVirtualBackgroundKit
     );
   }
 
+  /// T14.5 measurement hook: selects the segmentation model asset and
+  /// rebuilds the native segmenter. Null selects the production model;
+  /// `'selfie_segmenter.tflite'` is the legacy square A/B baseline (Android
+  /// only — iOS is a no-op). Not part of the public API; used by the
+  /// example's T14.5 test page.
+  Future<void> testSetModel(String? model) async {
+    await _guard(
+      () => methodChannel.invokeMethod<void>(
+        'testSetModel',
+        <String, Object?>{'model': model},
+      ),
+    );
+  }
+
   @override
   Future<void> dispose() async {
     await _guard(() => methodChannel.invokeMethod<void>('dispose'));

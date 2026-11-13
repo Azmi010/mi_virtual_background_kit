@@ -118,6 +118,43 @@ internal class FrameProcessorTest {
     }
 
     @Test
+    fun setTestModel_rebuildsSegmenterOnlyWhenAssetChanges() {
+        var providerCalls = 0
+        val first = FakeSegmenter()
+        val second = FakeSegmenter()
+        val third = FakeSegmenter()
+        val processor = FrameProcessor(
+            segmenterProvider = {
+                providerCalls++
+                when (providerCalls) {
+                    1 -> first
+                    2 -> second
+                    else -> third
+                }
+            },
+        )
+
+        processor.setBlurEffect(10.0f)
+        assertEquals(1, providerCalls)
+
+        // T14.5: switching to the legacy square model closes and rebuilds.
+        processor.setTestModel("selfie_segmenter.tflite")
+        assertEquals(2, providerCalls)
+        assertTrue(first.closed)
+        assertFalse(second.closed)
+
+        // Same asset again: no rebuild.
+        processor.setTestModel("selfie_segmenter.tflite")
+        assertEquals(2, providerCalls)
+
+        // Back to the production model: rebuild again.
+        processor.setTestModel(null)
+        assertEquals(3, providerCalls)
+        assertTrue(second.closed)
+        assertFalse(third.closed)
+    }
+
+    @Test
     fun setColorEffectUpdatesCurrentEffect() {
         val fakeSegmenter = FakeSegmenter()
         val processor = FrameProcessor(

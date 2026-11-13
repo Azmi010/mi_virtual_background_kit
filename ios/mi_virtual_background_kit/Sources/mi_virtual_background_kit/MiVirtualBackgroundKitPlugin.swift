@@ -335,6 +335,17 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
       print("T133| SET_STAGE st=\(stage)")
       result(nil)
 
+    // T14.5 measurement hook: the model swap is Android-only (ADR 0002 §8);
+    // accepted as a no-op so the example's T14.5 page runs on iOS.
+    case "testSetModel":
+      guard frameProcessor != nil else {
+        result(FlutterError(code: "no_processor", message: "kit not attached", details: nil))
+        return
+      }
+      let model = (call.arguments as? [String: Any])?["model"] as? String ?? "selfie_segmenter"
+      print("T145| SET_MODEL model=\(model) (ios: no-op, square model fixed)")
+      result(nil)
+
     // T14.4 measurement hook: forces one performance-window evaluation
     // (fallback recovery test only, mirrors testSetSmoothing).
     case "testSimulateFps":

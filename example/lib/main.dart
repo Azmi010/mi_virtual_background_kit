@@ -8,6 +8,7 @@ import 'package:mi_virtual_background_kit/mi_virtual_background_kit.dart';
 
 import 'flicker_test_page.dart';
 import 'livekit_page.dart';
+import 't145_test_page.dart';
 
 void main() {
   runApp(const ExampleApp());
@@ -314,6 +315,25 @@ class _ExamplePageState extends State<ExamplePage> {
     if (mounted) await _start();
   }
 
+  Future<void> _openT145Test() async {
+    // Same clean hand-off as _openFlicker: one camera session at a time.
+    await _detach();
+    final stream = _stream;
+    _stream = null;
+    stream?.getTracks().forEach((t) => t.stop());
+    await stream?.dispose();
+    if (mounted) {
+      _renderer.srcObject = null;
+      setState(() => _prodAttached = false);
+    }
+
+    if (!mounted) return;
+    await Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => const T145TestPage()));
+
+    if (mounted) await _start();
+  }
+
   Widget _buildControls() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -368,6 +388,11 @@ class _ExamplePageState extends State<ExamplePage> {
                 onPressed: _openFlickerTest,
                 icon: const Icon(Icons.blur_on, size: 18),
                 label: const Text('Flicker'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: _openT145Test,
+                icon: const Icon(Icons.speed, size: 18),
+                label: const Text('T14.5'),
               ),
             ],
           ),

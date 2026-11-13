@@ -256,6 +256,23 @@ class MiVirtualBackgroundKitPlugin :
                 android.util.Log.i("MiVBG", "T133| SET_STAGE st=$stage")
                 result.success(null)
             }
+            // T14.5 measurement hook: selects the segmentation model asset
+            // (null = production landscape model; "selfie_segmenter.tflite"
+            // = legacy square A/B baseline).
+            "testSetModel" -> {
+                val processor = frameProcessor
+                if (processor == null) {
+                    result.error("no_processor", "kit not attached", null)
+                    return
+                }
+                val model = call.argument<String>("model")
+                try {
+                    processor.setTestModel(model)
+                    result.success(null)
+                } catch (t: Throwable) {
+                    result.error("modelLoadFailed", t.message, null)
+                }
+            }
             // T14.4 measurement hook: forces one performance-window evaluation
             // (fallback recovery test only, mirrors testSetSmoothing).
             "testSimulateFps" -> {

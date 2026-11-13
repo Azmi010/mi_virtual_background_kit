@@ -34,9 +34,16 @@ interface MaskSegmenter : AutoCloseable {
 
 /**
  * Person segmentation with MediaPipe Image Segmenter and the bundled
- * `selfie_segmenter.tflite` model, CPU delegate (ADR 0001 §3).
+ * model, CPU delegate (ADR 0001 §3, model per ADR 0002 §8).
+ *
+ * [modelAsset] exists for the T14.5 measurement hook: production always
+ * loads [MODEL_ASSET], the example's test page can select the legacy
+ * square model for A/B runs.
  */
-class Segmenter(context: Context) : MaskSegmenter {
+class Segmenter(
+    context: Context,
+    modelAsset: String = MODEL_ASSET,
+) : MaskSegmenter {
 
     private val segmenter: ImageSegmenter = try {
         ImageSegmenter.createFromOptions(
@@ -44,7 +51,7 @@ class Segmenter(context: Context) : MaskSegmenter {
             ImageSegmenter.ImageSegmenterOptions.builder()
                 .setBaseOptions(
                     BaseOptions.builder()
-                        .setModelAssetPath(MODEL_ASSET)
+                        .setModelAssetPath(modelAsset)
                         .setDelegate(Delegate.CPU)
                         .build(),
                 )
@@ -81,10 +88,20 @@ class Segmenter(context: Context) : MaskSegmenter {
     override fun close() = segmenter.close()
 
     companion object {
-        const val MODEL_ASSET = "selfie_segmenter.tflite"
+        /**
+         * Production model (ADR 0002 §8): `selfie_segmenter_landscape`
+         * (144×256 float16) — 34% lower inference latency than the legacy
+         * square `selfie_segmenter.tflite` at equal quality on low-end
+         * hardware (spike T13.4). The square model stays bundled as the
+         * T14.5 A/B baseline and is removed once the swap is accepted.
+         */
+        const val MODEL_ASSET = "selfie_segmenter_landscape.tflite"
+
+        /** Legacy square model, A/B baseline for T14.5 only. */
+        const val LEGACY_MODEL_ASSET = "selfie_segmenter.tflite"
 
         /**
-         * Checks whether the bundled selfie_segmenter.tflite asset is readable in [context].
+         * Checks whether the bundled production model asset is readable in [context].
          */
         fun isModelAssetAvailable(context: Context): Boolean {
             return try {

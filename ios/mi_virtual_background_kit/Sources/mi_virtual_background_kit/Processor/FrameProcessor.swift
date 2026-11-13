@@ -60,6 +60,9 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
     private var fpsLogNs: Int64 = 0
     private var fpsLogFrames = 0
     private var fpsLogValue: Double = 0
+    // T14.5 freshness metrics (guarded by `lock`).
+    private var lastInferenceMs: Double = -1
+    private var lastMaskLogNs: Int64 = 0
     public internal(set) var adaptiveSegmentInterval: Int = 1
     public private(set) var isFallbackDisabled: Bool = false
 
@@ -421,6 +424,7 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
 
                 self.lock.lock()
                 let released = self.isReleased
+                self.lastInferenceMs = inferenceMs
                 if inferenceMs < 15.0 {
                     self.adaptiveSegmentInterval = 1
                 } else if inferenceMs < 30.0 {
@@ -492,10 +496,16 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         }
         let fps = fpsLogValue
         let stage = testStage
+        // T14.5 freshness metrics: gap since the previous logged mask,
+        // last inference cost, and the live adaptive scheduling interval.
+        let gap: Int64 = lastMaskLogNs == 0 ? -1 : (now - lastMaskLogNs) / 1_000_000
+        lastMaskLogNs = now
+        let inf = lastInferenceMs
+        let iv = adaptiveSegmentInterval
         lock.unlock()
         print(String(
-            format: "T133| m=%@ v=%.2f d0=%.2f st=%@ rev=%d chg=%d d=%.1f lag=%.1f px=%d us=%llu fps=%.1f",
-            mode, value, d0, stage, res.rev, res.chg, res.dPct, res.lagPct, res.alpha.count, res.us, fps
+            format: "T133| m=%@ v=%.2f d0=%.2f st=%@ rev=%d chg=%d d=%.1f lag=%.1f px=%d us=%llu fps=%.1f gap=%lld inf=%.0f iv=%d",
+            mode, value, d0, stage, res.rev, res.chg, res.dPct, res.lagPct, res.alpha.count, res.us, fps, gap, inf, iv
         ))
     }
 

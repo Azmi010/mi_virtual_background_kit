@@ -129,6 +129,19 @@ void main() {
       expect(log.single.arguments, <String, Object?>{'fps': 8.0});
     });
 
+    test('testSetModel sends model asset, null = production (T14.5 hook)',
+        () async {
+      mockHandler((_) async => null);
+      await platform.testSetModel('selfie_segmenter.tflite');
+      expect(log.single.method, 'testSetModel');
+      expect(log.single.arguments,
+          <String, Object?>{'model': 'selfie_segmenter.tflite'});
+
+      log.clear();
+      await platform.testSetModel(null);
+      expect(log.single.arguments, <String, Object?>{'model': null});
+    });
+
     test('setEffect sends serialized map', () async {
       mockHandler((_) async => null);
       await platform.setEffect(<String, Object?>{
