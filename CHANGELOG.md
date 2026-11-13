@@ -21,6 +21,10 @@ mempertahankan perilaku versi sebelumnya. Rincian: ADR 0002 butir 9.
 * `attach()` tanpa parameter `quality` kini memakai konfigurasi quality
   terakhir (kamera switch tidak lagi mengembalikan `BackgroundQuality` ke
   default, termasuk flag `autoRecovery`).
+* Model segmentasi Android berganti default ke `selfie_segmenter_landscape`
+  (ADR 0002 §8, T14.5): latensi inferensi turun ±34% pada perangkat kelas
+  rendah dengan kualitas mask setara, sehingga mask lebih segar tanpa
+  penurunan fps. `segmentationWidth` default tetap 256.
 
 ## 0.1.1
 
