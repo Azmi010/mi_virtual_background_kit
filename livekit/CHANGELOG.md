@@ -1,3 +1,4 @@
 ## 0.2.0 (belum dirilis)
 
-* Initial scaffold of the LiveKit adapter package.
+* `LiveKitVirtualBackground` wraps the core kit: `attach` to a LiveKit
+  `LocalVideoTrack`, `setEffect`, `detach`, and `dispose`.
