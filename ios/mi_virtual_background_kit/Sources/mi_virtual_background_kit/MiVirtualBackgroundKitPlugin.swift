@@ -14,6 +14,8 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
   // outlive detach.
   internal var retainedAdapter: VideoProcessingAdapter?
   private var eventSink: FlutterEventSink?
+  // FR-23 (T14.6): sink for the metrics channel; null while nobody listens.
+  internal var metricsSink: FlutterEventSink?
   internal var currentStatus: String = "idle"
   private weak var registrar: FlutterPluginRegistrar?
 
@@ -30,6 +32,10 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
     instance.registrar = registrar
     registrar.addMethodCallDelegate(instance, channel: channel)
     eventChannel.setStreamHandler(instance)
+    // FR-23 (T14.6): metrics ride a separate channel whose listener count
+    // toggles native emission; the plugin instance can't serve both channels.
+    let metricsChannel = FlutterEventChannel(name: "mi_virtual_background_kit/metrics", binaryMessenger: registrar.messenger())
+    metricsChannel.setStreamHandler(MetricsStreamHandler(plugin: instance))
   }
 
   public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
@@ -61,6 +67,29 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
       DispatchQueue.main.async { [weak self] in
         self?.eventSink?(event)
       }
+    }
+  }
+
+  internal func sendMetricsEvent(_ event: [String: Any]) {
+    guard let sink = metricsSink else { return }
+    if Thread.isMainThread {
+      sink(event)
+    } else {
+      DispatchQueue.main.async { sink(event) }
+    }
+  }
+
+  /// FR-23 (T14.6): the metrics stream's listener count is the emit switch.
+  /// With nobody listening the processor keeps its callback nil, so no map is
+  /// built and no message crosses the channel.
+  internal func updateMetricsEmission() {
+    guard let processor = frameProcessor else { return }
+    if metricsSink != nil {
+      processor.onMetricsEvent = { [weak self] event in
+        self?.sendMetricsEvent(event)
+      }
+    } else {
+      processor.onMetricsEvent = nil
     }
   }
 
@@ -232,6 +261,8 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
 
       self.attachedTrack = track
       self.frameProcessor = processor
+      // FR-23 (T14.6): wire metrics emit only while someone listens.
+      updateMetricsEmission()
       updateStatus("active")
       print("[MiVBG] Successfully attached production FrameProcessor to track: \(trackId)")
       result(nil)
@@ -375,5 +406,29 @@ public class MiVirtualBackgroundKitPlugin: NSObject, FlutterPlugin, FlutterStrea
     default:
       result(FlutterMethodNotImplemented)
     }
+  }
+}
+
+/// Stream handler for `mi_virtual_background_kit/metrics` (FR-23, T14.6).
+/// Kept separate from the plugin because `MiVirtualBackgroundKitPlugin` is
+/// already the status channel's handler.
+final class MetricsStreamHandler: NSObject, FlutterStreamHandler {
+  private weak var plugin: MiVirtualBackgroundKitPlugin?
+
+  init(plugin: MiVirtualBackgroundKitPlugin) {
+    self.plugin = plugin
+    super.init()
+  }
+
+  func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+    plugin?.metricsSink = events
+    plugin?.updateMetricsEmission()
+    return nil
+  }
+
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    plugin?.metricsSink = nil
+    plugin?.updateMetricsEmission()
+    return nil
   }
 }

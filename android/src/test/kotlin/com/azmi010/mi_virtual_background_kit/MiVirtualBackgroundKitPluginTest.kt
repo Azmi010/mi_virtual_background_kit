@@ -436,6 +436,30 @@ internal class MiVirtualBackgroundKitPluginTest {
     }
 
     @Test
+    fun sendMetricsEvent_deliversPayloadToSink() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+        val mockSink = Mockito.mock(EventChannel.EventSink::class.java)
+        plugin.metricsSink = mockSink
+
+        val metricsMap = mapOf(
+            "outputFps" to 28.4,
+            "segmentationLatencyMs" to 91.0,
+            "maskAgeMs" to 250.0,
+        )
+        plugin.sendMetricsEvent(metricsMap)
+
+        Mockito.verify(mockSink).success(metricsMap)
+    }
+
+    @Test
+    fun sendMetricsEvent_withoutListener_isNoop() {
+        val plugin = MiVirtualBackgroundKitPlugin()
+        plugin.metricsSink = null
+        // FR-23: no listener -> no message, no crash.
+        plugin.sendMetricsEvent(mapOf("outputFps" to 30.0))
+    }
+
+    @Test
     fun onMethodCall_isSupported_checkerOverrides() {
         val plugin = MiVirtualBackgroundKitPlugin()
 

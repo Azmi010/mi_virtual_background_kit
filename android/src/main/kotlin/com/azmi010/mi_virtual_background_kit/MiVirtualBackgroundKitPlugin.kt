@@ -24,6 +24,8 @@ class MiVirtualBackgroundKitPlugin :
     private lateinit var channel: MethodChannel
     private var statusChannel: EventChannel? = null
     internal var statusSink: EventChannel.EventSink? = null
+    private var metricsChannel: EventChannel? = null
+    internal var metricsSink: EventChannel.EventSink? = null
     private var mainHandler: android.os.Handler? = null
 
     internal var currentStatus: String = "idle"
@@ -54,6 +56,24 @@ class MiVirtualBackgroundKitPlugin :
         runOnMainThread {
             sink.success(event)
         }
+    }
+
+    internal fun sendMetricsEvent(event: Map<String, Any?>) {
+        val sink = metricsSink ?: return
+        runOnMainThread {
+            sink.success(event)
+        }
+    }
+
+    /**
+     * FR-23 (T14.6): the metrics stream's listener count is the emit switch.
+     * With nobody listening the processor keeps its callback null, so it
+     * builds no map and posts no message.
+     */
+    private fun updateMetricsEmission() {
+        val processor = frameProcessor ?: return
+        processor.onMetricsEvent =
+            if (metricsSink != null) { event -> sendMetricsEvent(event) } else null
     }
 
     // Production processor (T3.2). ADR 0001 §1: the LocalVideoTrack object
@@ -100,6 +120,22 @@ class MiVirtualBackgroundKitPlugin :
             }
         })
         statusChannel = sc
+
+        // FR-23 (T14.6): separate channel; listener attach/cancel toggles
+        // native emission for the current processor.
+        val mc = EventChannel(flutterPluginBinding.binaryMessenger, "mi_virtual_background_kit/metrics")
+        mc.setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                metricsSink = events
+                updateMetricsEmission()
+            }
+
+            override fun onCancel(arguments: Any?) {
+                metricsSink = null
+                updateMetricsEmission()
+            }
+        })
+        metricsChannel = mc
     }
 
     override fun onMethodCall(
@@ -160,6 +196,8 @@ class MiVirtualBackgroundKitPlugin :
                 }
                 attachedTrack = track
                 frameProcessor = processor
+                // FR-23 (T14.6): wire metrics emit only while someone listens.
+                updateMetricsEmission()
                 updateStatus("active")
                 android.util.Log.i("MiVBG", "attached processor to $trackId")
                 result.success(null)
@@ -309,6 +347,9 @@ class MiVirtualBackgroundKitPlugin :
         statusChannel?.setStreamHandler(null)
         statusChannel = null
         statusSink = null
+        metricsChannel?.setStreamHandler(null)
+        metricsChannel = null
+        metricsSink = null
         flutterAssets = null
         appContext = null
     }

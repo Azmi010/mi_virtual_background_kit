@@ -111,6 +111,10 @@ Switch any of them at runtime (`setEffect`), change quality live
 - `fallbackStream` → automatic quality degradation or effect disable when the
   device cannot keep up (FR-12), so you can inform the user instead of
   shipping a frozen video.
+- `metricsStream` → local diagnostics about once per second while an effect
+  is active: output fps, last segmentation latency, and mask age
+  (`BackgroundMetrics`). Reporting only runs while you listen; nothing ever
+  leaves the device.
 
 ## Performance
 

@@ -1170,6 +1170,149 @@ class RunnerTests: XCTestCase {
     processor.release()
   }
 
+  // MARK: - T14.6 metrics reporting (FR-23)
+
+  func testMetricsEmit_throttledToOncePerSecond() throws {
+    let mockCompositor = MockCompositor()
+    mockCompositor.uploadMask(PersonMask(alpha: [255], width: 1, height: 1))
+    let processor = FrameProcessor(
+      compositor: mockCompositor,
+      segmenterProvider: { MockSegmenter() }
+    )
+    var payloads: [[String: Any]] = []
+    processor.onMetricsEvent = { payload in payloads.append(payload) }
+    try processor.setBlurEffect(radius: 12.0)
+
+    guard let pb = createTestCVPixelBuffer() else {
+      XCTFail("Could not create pixel buffer")
+      return
+    }
+    let rtcBuffer = RTCCVPixelBuffer(pixelBuffer: pb)
+
+    // Window opens on frame 1, one sample after 1 s, the remaining ~0.3 s
+    // must not produce a second one.
+    var ts: Int64 = 1_000_000_000
+    for _ in 0...40 {
+      _ = processor.onFrame(RTCVideoFrame(buffer: rtcBuffer, rotation: ._0, timeStampNs: ts))
+      ts += 33_000_000
+    }
+
+    XCTAssertEqual(payloads.count, 1)
+    let fps = payloads[0]["outputFps"] as? Double ?? -1
+    XCTAssertTrue((15.0...60.0).contains(fps), "fps=\(fps)")
+  }
+
+  func testMetricsEmit_frameGapOverThreeSeconds_resetsWindowWithoutSample() throws {
+    let mockCompositor = MockCompositor()
+    mockCompositor.uploadMask(PersonMask(alpha: [255], width: 1, height: 1))
+    let processor = FrameProcessor(
+      compositor: mockCompositor,
+      segmenterProvider: { MockSegmenter() }
+    )
+    var payloads: [[String: Any]] = []
+    processor.onMetricsEvent = { payload in payloads.append(payload) }
+    try processor.setBlurEffect(radius: 12.0)
+
+    guard let pb = createTestCVPixelBuffer() else {
+      XCTFail("Could not create pixel buffer")
+      return
+    }
+    let rtcBuffer = RTCCVPixelBuffer(pixelBuffer: pb)
+
+    // Open the window, stay under 1 s (no sample yet).
+    var ts: Int64 = 1_000_000_000
+    for _ in 0..<10 {
+      _ = processor.onFrame(RTCVideoFrame(buffer: rtcBuffer, rotation: ._0, timeStampNs: ts))
+      ts += 33_000_000
+    }
+    // Background/foreground jump: > 3 s gap must reset, not emit a
+    // near-zero fps sample for the stale window.
+    ts = 10_000_000_000
+    for _ in 0..<35 {
+      _ = processor.onFrame(RTCVideoFrame(buffer: rtcBuffer, rotation: ._0, timeStampNs: ts))
+      ts += 33_000_000
+    }
+
+    XCTAssertEqual(payloads.count, 1)
+    let fps = payloads[0]["outputFps"] as? Double ?? -1
+    XCTAssertTrue((15.0...60.0).contains(fps), "fps=\(fps) after gap reset")
+  }
+
+  func testMetricsEmit_withoutEffect_neverEmits() throws {
+    let mockCompositor = MockCompositor()
+    let processor = FrameProcessor(
+      compositor: mockCompositor,
+      segmenterProvider: { MockSegmenter() }
+    )
+    var payloads: [[String: Any]] = []
+    processor.onMetricsEvent = { payload in payloads.append(payload) }
+
+    guard let pb = createTestCVPixelBuffer() else {
+      XCTFail("Could not create pixel buffer")
+      return
+    }
+    let rtcBuffer = RTCCVPixelBuffer(pixelBuffer: pb)
+
+    var ts: Int64 = 1_000_000_000
+    for _ in 0..<60 {
+      _ = processor.onFrame(RTCVideoFrame(buffer: rtcBuffer, rotation: ._0, timeStampNs: ts))
+      ts += 33_000_000
+    }
+
+    XCTAssertTrue(payloads.isEmpty)
+  }
+
+  func testMetricsEmit_withoutListener_isNoop() throws {
+    let mockCompositor = MockCompositor()
+    mockCompositor.uploadMask(PersonMask(alpha: [255], width: 1, height: 1))
+    let processor = FrameProcessor(
+      compositor: mockCompositor,
+      segmenterProvider: { MockSegmenter() }
+    )
+    // onMetricsEvent stays nil: gate returns before building any map.
+    try processor.setBlurEffect(radius: 12.0)
+
+    guard let pb = createTestCVPixelBuffer() else {
+      XCTFail("Could not create pixel buffer")
+      return
+    }
+    let rtcBuffer = RTCCVPixelBuffer(pixelBuffer: pb)
+
+    var ts: Int64 = 1_000_000_000
+    for _ in 0..<60 {
+      _ = processor.onFrame(RTCVideoFrame(buffer: rtcBuffer, rotation: ._0, timeStampNs: ts))
+      ts += 33_000_000
+    }
+
+    XCTAssertEqual(processor.frameCount, 60)
+  }
+
+  func testMetricsStreamHandler_togglesSinkAndEmission() {
+    let plugin = MiVirtualBackgroundKitPlugin()
+    let handler = MetricsStreamHandler(plugin: plugin)
+    var received: [[String: Any]] = []
+
+    XCTAssertNil(plugin.metricsSink)
+
+    let err = handler.onListen(withArguments: nil) { event in
+      if let map = event as? [String: Any] { received.append(map) }
+    }
+    XCTAssertNil(err)
+    XCTAssertNotNil(plugin.metricsSink)
+
+    plugin.sendMetricsEvent(["outputFps": 28.4, "segmentationLatencyMs": 91.0])
+    XCTAssertEqual(received.count, 1)
+    XCTAssertEqual(received[0]["outputFps"] as? Double, 28.4)
+
+    let cancelErr = handler.onCancel(withArguments: nil)
+    XCTAssertNil(cancelErr)
+    XCTAssertNil(plugin.metricsSink)
+
+    // After cancel the sink is nil: sending is a no-op, no crash.
+    plugin.sendMetricsEvent(["outputFps": 30.0])
+    XCTAssertEqual(received.count, 1)
+  }
+
   func testFrameGapAfterBackground_resetsWindowWithoutFalseFallback() throws {
     let mockSegmenter = MockSegmenter()
     let mockCompositor = MockCompositor()

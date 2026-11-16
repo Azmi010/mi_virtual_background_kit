@@ -34,6 +34,10 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
     public static let recoverFpsThreshold: Double = 20.0
     public static let recoveryStableWindows = 2
 
+    /// FR-23 (T14.6): metrics reporting cadence and frame-gap cutoff.
+    public static let metricsEmitIntervalNs: Int64 = 1_000_000_000
+    public static let metricsGapResetNs: Int64 = 3_000_000_000
+
     private let lock = NSLock()
     private var frames: Int = 0
     private var _lastRotation: Int32 = 0
@@ -63,6 +67,11 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
     // T14.5 freshness metrics (guarded by `lock`).
     private var lastInferenceMs: Double = -1
     private var lastMaskLogNs: Int64 = 0
+    // FR-23 (T14.6): ~1 Hz metrics window and mask-upload time (guarded by
+    // `lock`; 0 = window closed / no mask yet).
+    private var metricsEmitNs: Int64 = 0
+    private var metricsEmitFrames = 0
+    private var lastMaskUploadNs: Int64 = 0
     public internal(set) var adaptiveSegmentInterval: Int = 1
     public private(set) var isFallbackDisabled: Bool = false
 
@@ -104,6 +113,8 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
 
     public var onStatusChange: ((String) -> Void)?
     public var onFallbackEvent: (([String: Any]) -> Void)?
+    // FR-23 (T14.6): metrics emit callback; nil while nobody listens.
+    public var onMetricsEvent: (([String: Any]) -> Void)?
 
     public var frameCount: Int {
         lock.lock()
@@ -338,6 +349,10 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
             return frame
         }
 
+        // FR-23 (T14.6): ~1 Hz metrics while an effect is active; no-op when
+        // nobody listens (onMetricsEvent nil).
+        maybeEmitMetrics(currentTimestamp: currentTimestamp)
+
         guard let rtcBuffer = frame.buffer as? RTCCVPixelBuffer else {
             return frame
         }
@@ -454,6 +469,9 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
     /// `maskTemporalSmoothing == 0` uploads the raw mask (identical to v0.1).
     private func applyMask(_ mask: PersonMask, rotation: Int32) {
         lock.lock()
+        // FR-23: mask age is measured from every upload, including the raw
+        // path (smoothing disabled).
+        lastMaskUploadNs = Int64(Date().timeIntervalSince1970 * 1_000_000_000)
         let hookMode = testSmoothingMode
         let value = hookMode != nil ? testSmoothingValue : maskTemporalSmoothing
         let d0 = hookMode != nil ? testSmoothingD0 : MaskTemporalSmoother.adaptiveD0
@@ -475,6 +493,56 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
             ),
             rotation: rotation
         )
+    }
+
+    /// FR-23 (T14.6): emits one metrics sample per second while an effect is
+    /// active. First call only opens the window. Returns immediately when
+    /// nobody listens (`onMetricsEvent` nil), so no map is built. A frame gap
+    /// > `metricsGapResetNs` (background/foreground) resets the window instead
+    /// of reporting a near-zero fps sample.
+    private func maybeEmitMetrics(currentTimestamp: Int64) {
+        lock.lock()
+        guard let emit = onMetricsEvent else {
+            lock.unlock()
+            return
+        }
+        if metricsEmitNs == 0 {
+            metricsEmitNs = currentTimestamp
+            metricsEmitFrames = frames
+            lock.unlock()
+            return
+        }
+        let elapsed = currentTimestamp - metricsEmitNs
+        if elapsed <= 0 {
+            lock.unlock()
+            return
+        }
+        if elapsed > FrameProcessor.metricsGapResetNs {
+            metricsEmitNs = currentTimestamp
+            metricsEmitFrames = frames
+            lock.unlock()
+            return
+        }
+        if elapsed < FrameProcessor.metricsEmitIntervalNs {
+            lock.unlock()
+            return
+        }
+        let fps = Double(frames - metricsEmitFrames) * 1_000_000_000.0 / Double(elapsed)
+        metricsEmitNs = currentTimestamp
+        metricsEmitFrames = frames
+        let inference = lastInferenceMs
+        let uploadedNs = lastMaskUploadNs
+        lock.unlock()
+
+        var payload: [String: Any] = ["outputFps": fps]
+        if inference >= 0 {
+            payload["segmentationLatencyMs"] = inference
+        }
+        if uploadedNs > 0 {
+            let nowNs = Int64(Date().timeIntervalSince1970 * 1_000_000_000)
+            payload["maskAgeMs"] = Double(nowNs - uploadedNs) / 1_000_000.0
+        }
+        emit(payload)
     }
 
     /// One metric line per smoothed mask; parsed by tool/smoothing_metrics.py.

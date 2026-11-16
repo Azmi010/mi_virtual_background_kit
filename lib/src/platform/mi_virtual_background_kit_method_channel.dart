@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'mi_virtual_background_kit_platform_interface.dart';
 import '../fallback/fallback.dart';
+import '../metrics/metrics.dart';
 import '../status/status.dart';
 
 /// An implementation of [MiVirtualBackgroundKitPlatform] that uses method channels.
@@ -15,6 +16,13 @@ class MethodChannelMiVirtualBackgroundKit
   /// The event channel streaming processor status updates.
   @visibleForTesting
   final eventChannel = const EventChannel('mi_virtual_background_kit/status');
+
+  /// The event channel streaming local processing metrics (FR-23). Separate
+  /// from [eventChannel] so metric maps can never be confused with fallback
+  /// maps, and so its listener count drives the native emit switch.
+  @visibleForTesting
+  final metricsEventChannel =
+      const EventChannel('mi_virtual_background_kit/metrics');
 
   @override
   Future<bool> isSupported() async {
@@ -136,6 +144,18 @@ class MethodChannelMiVirtualBackgroundKit
     return _broadcastStream
         .where((event) => event is Map)
         .map((event) => PerformanceFallbackEvent.fromMap(event as Map));
+  }
+
+  Stream<dynamic>? _metricsBroadcastStream;
+
+  Stream<dynamic> get _metricsStream =>
+      _metricsBroadcastStream ??= metricsEventChannel.receiveBroadcastStream();
+
+  @override
+  Stream<BackgroundMetrics> get metricsStream {
+    return _metricsStream
+        .where((event) => event is Map)
+        .map((event) => BackgroundMetrics.fromMap(event as Map));
   }
 
   ProcessorStatus _statusFromEvent(dynamic event) {

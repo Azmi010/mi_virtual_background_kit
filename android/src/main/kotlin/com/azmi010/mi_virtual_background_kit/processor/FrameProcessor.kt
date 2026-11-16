@@ -37,6 +37,7 @@ class FrameProcessor(
     private val bitmapProvider: ((Int, Int) -> Bitmap)? = null,
     var onStatusChange: ((String) -> Unit)? = null,
     var onFallbackEvent: ((Map<String, Any?>) -> Unit)? = null,
+    var onMetricsEvent: ((Map<String, Any?>) -> Unit)? = null,
 ) : LocalVideoTrack.ExternalVideoFrameProcessing {
 
     private val frames = AtomicInteger(0)
@@ -90,6 +91,14 @@ class FrameProcessor(
 
     /** Capture-thread only: of the previously logged mask, ns (gap metric). */
     private var lastMaskLogNs: Long = 0
+
+    // FR-23 (T14.6): ~1 Hz metrics report window (capture-thread only) and
+    // the upload time of the mask currently composited (0 = none).
+    private var metricsEmitNs: Long = 0L
+    private var metricsEmitFrames: Int = 0
+
+    @Volatile
+    private var lastMaskUploadNs: Long = 0L
 
     private val segmentExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val isSegmenting = AtomicBoolean(false)
@@ -398,6 +407,10 @@ class FrameProcessor(
             return frame
         }
 
+        // FR-23 (T14.6): ~1 Hz metrics while an effect is active; no-op when
+        // nobody listens (onMetricsEvent null).
+        maybeEmitMetrics(currentTimestamp)
+
         if (buffer == null) return frame
 
         if (targetFps < 30 && lastCompositedTimestampNs > 0L) {
@@ -697,6 +710,9 @@ class FrameProcessor(
      * `maskTemporalSmoothing == 0` uploads the raw mask (identical to v0.1).
      */
     private fun uploadMaskWithSmoothing(mask: PersonMask) {
+        // FR-23: mask age is measured from every upload, including the raw
+        // path (smoothing disabled).
+        lastMaskUploadNs = System.nanoTime()
         val hookMode = testSmoothingMode
         val mode = hookMode ?: "adaptive"
         val value = if (hookMode != null) testSmoothingValue else maskTemporalSmoothing
@@ -743,6 +759,44 @@ class FrameProcessor(
     private fun fmt(v: Number, digits: Int): String =
         String.format(java.util.Locale.US, "%.${digits}f", v)
 
+    /**
+     * FR-23 (T14.6): emits one metrics sample per second while an effect is
+     * active. First call only opens the window. Returns immediately when
+     * nobody listens ([onMetricsEvent] null), so the map is never built and
+     * no message crosses the channel. A frame gap > [METRICS_GAP_RESET_NS]
+     * (background/foreground) resets the window instead of reporting a
+     * near-zero fps sample.
+     */
+    private fun maybeEmitMetrics(currentTimestamp: Long) {
+        val emit = onMetricsEvent ?: return
+        if (metricsEmitNs == 0L) {
+            metricsEmitNs = currentTimestamp
+            metricsEmitFrames = frames.get()
+            return
+        }
+        val elapsed = currentTimestamp - metricsEmitNs
+        if (elapsed <= 0L) return
+        if (elapsed > METRICS_GAP_RESET_NS) {
+            metricsEmitNs = currentTimestamp
+            metricsEmitFrames = frames.get()
+            return
+        }
+        if (elapsed < METRICS_EMIT_INTERVAL_NS) return
+        val fps = (frames.get() - metricsEmitFrames) * 1_000_000_000.0 / elapsed
+        metricsEmitNs = currentTimestamp
+        metricsEmitFrames = frames.get()
+
+        val payload = HashMap<String, Any?>(4)
+        payload["outputFps"] = fps
+        val inference = lastInferenceMs
+        if (inference >= 0) payload["segmentationLatencyMs"] = inference.toDouble()
+        val uploadedNs = lastMaskUploadNs
+        if (uploadedNs > 0L) {
+            payload["maskAgeMs"] = (System.nanoTime() - uploadedNs) / 1_000_000.0
+        }
+        emit(payload)
+    }
+
     /** Allows simulating a performance window directly for tests (FR-12/FR-21). */
     internal fun simulatePerformanceDrop(measuredFps: Double) {
         evaluatePerformance(measuredFps)
@@ -766,6 +820,10 @@ class FrameProcessor(
         const val RECOVER_FPS_THRESHOLD = 20
         const val RECOVERY_STABLE_WINDOWS = 2
         const val FRAME_GAP_RESET_NS = 1_000_000_000L
+
+        /** FR-23 (T14.6): metrics reporting cadence and frame-gap cutoff. */
+        const val METRICS_EMIT_INTERVAL_NS = 1_000_000_000L
+        const val METRICS_GAP_RESET_NS = 3_000_000_000L
     }
 }
 

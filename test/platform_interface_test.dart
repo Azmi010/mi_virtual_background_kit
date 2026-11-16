@@ -30,6 +30,7 @@ void main() {
       expectUnimplemented(() => platform.dispose());
       expect(() => platform.statusStream, throwsUnimplementedError);
       expect(() => platform.fallbackStream, throwsUnimplementedError);
+      expect(() => platform.metricsStream, throwsUnimplementedError);
     });
   });
 }

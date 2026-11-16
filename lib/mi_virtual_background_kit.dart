@@ -4,12 +4,14 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import 'src/effects/effects.dart';
 import 'src/fallback/fallback.dart';
+import 'src/metrics/metrics.dart';
 import 'src/platform/mi_virtual_background_kit_platform_interface.dart';
 import 'src/quality/quality.dart';
 import 'src/status/status.dart';
 
 export 'src/effects/effects.dart';
 export 'src/fallback/fallback.dart';
+export 'src/metrics/metrics.dart';
 export 'src/quality/quality.dart';
 export 'src/status/status.dart';
 
@@ -41,6 +43,14 @@ class MiVirtualBackgroundKit {
   /// effects due to sustained frame rate drops on low-end or constrained hardware.
   Stream<PerformanceFallbackEvent> get fallbackStream =>
       _platform.fallbackStream;
+
+  /// Local processing metrics: output fps, last segmentation latency, and
+  /// mask age, about once per second while an effect is active (FR-23).
+  ///
+  /// Reporting is driven by this stream's listeners: while nobody listens,
+  /// the native side sends nothing, so an unused stream costs nothing.
+  /// All data stays on-device; the kit never transmits it anywhere.
+  Stream<BackgroundMetrics> get metricsStream => _platform.metricsStream;
 
   /// Attaches the processor to a local camera [track] with optional [quality] settings.
   ///

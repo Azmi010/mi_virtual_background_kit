@@ -2,6 +2,7 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'mi_virtual_background_kit_method_channel.dart';
 import '../fallback/fallback.dart';
+import '../metrics/metrics.dart';
 import '../status/status.dart';
 
 /// Platform interface that implementations of mi_virtual_background_kit must
@@ -68,5 +69,10 @@ abstract class MiVirtualBackgroundKitPlatform extends PlatformInterface {
   /// Stream of automatic performance fallback events (FR-12).
   Stream<PerformanceFallbackEvent> get fallbackStream {
     throw UnimplementedError('fallbackStream has not been implemented.');
+  }
+
+  /// Local processing metrics, about once per second (FR-23).
+  Stream<BackgroundMetrics> get metricsStream {
+    throw UnimplementedError('metricsStream has not been implemented.');
   }
 }

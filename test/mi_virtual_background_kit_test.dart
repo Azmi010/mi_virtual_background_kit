@@ -15,6 +15,7 @@ class MockPlatform
   final statusController = StreamController<ProcessorStatus>.broadcast();
   final fallbackController =
       StreamController<PerformanceFallbackEvent>.broadcast();
+  final metricsController = StreamController<BackgroundMetrics>.broadcast();
 
   bool supported = true;
   Object? attachError;
@@ -63,6 +64,9 @@ class MockPlatform
   @override
   Stream<PerformanceFallbackEvent> get fallbackStream =>
       fallbackController.stream;
+
+  @override
+  Stream<BackgroundMetrics> get metricsStream => metricsController.stream;
 }
 
 class FakeTrack extends Fake implements MediaStreamTrack {
@@ -92,6 +96,7 @@ void main() {
   tearDown(() {
     mock.statusController.close();
     mock.fallbackController.close();
+    mock.metricsController.close();
   });
 
   group('isSupported', () {
@@ -455,6 +460,22 @@ void main() {
         segmentationWidth: 192,
       );
       mock.fallbackController.add(sample);
+      await Future<void>.delayed(Duration.zero);
+      expect(events, [sample]);
+      await sub.cancel();
+    });
+  });
+
+  group('metricsStream', () {
+    test('delegates to platform stream', () async {
+      final events = <BackgroundMetrics>[];
+      final sub = kit.metricsStream.listen(events.add);
+      const sample = BackgroundMetrics(
+        outputFps: 28.4,
+        segmentationLatencyMs: 91.0,
+        maskAgeMs: 250.0,
+      );
+      mock.metricsController.add(sample);
       await Future<void>.delayed(Duration.zero);
       expect(events, [sample]);
       await sub.cancel();

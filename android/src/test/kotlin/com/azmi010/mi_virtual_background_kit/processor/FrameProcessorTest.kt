@@ -708,6 +708,123 @@ internal class FrameProcessorTest {
         processor.release()
     }
 
+    // --- T14.6 (FR-23): metrics reporting ---
+
+    private fun rgbBuffer(): VideoFrame.TextureBuffer {
+        val mockBuffer = Mockito.mock(VideoFrame.TextureBuffer::class.java)
+        Mockito.`when`(mockBuffer.unscaledWidth).thenReturn(640)
+        Mockito.`when`(mockBuffer.unscaledHeight).thenReturn(480)
+        Mockito.`when`(mockBuffer.type).thenReturn(VideoFrame.TextureBuffer.Type.RGB)
+        return mockBuffer
+    }
+
+    @Test
+    fun metricsEmit_throttledToOncePerSecond() {
+        val payloads = mutableListOf<Map<String, Any?>>()
+        val fakeCompositor = FakeCompositor()
+        fakeCompositor.uploadMask(PersonMask(ByteArray(4), 2, 2))
+        val processor = FrameProcessor(
+            segmenterProvider = { FakeSegmenter() },
+            compositorProvider = { fakeCompositor },
+            onMetricsEvent = { payload -> payloads.add(payload) },
+        )
+        processor.setBlurEffect(10.0f)
+
+        // 41 frames at 33 ms: window opens on frame 1, one sample after 1 s,
+        // and the remaining ~0.3 s must not produce a second one.
+        var ts = 1_000_000_000L
+        val buffer = rgbBuffer()
+        for (i in 0..40) {
+            processor.onFrame(VideoFrame(buffer, 0, ts))
+            ts += 33_000_000L
+        }
+
+        assertEquals(1, payloads.size)
+        val fps = payloads[0]["outputFps"] as Double
+        assertTrue(fps in 15.0..60.0, "fps=$fps")
+
+        processor.release()
+    }
+
+    @Test
+    fun metricsEmit_frameGapOverThreeSeconds_resetsWindowWithoutSample() {
+        val payloads = mutableListOf<Map<String, Any?>>()
+        val fakeCompositor = FakeCompositor()
+        fakeCompositor.uploadMask(PersonMask(ByteArray(4), 2, 2))
+        val processor = FrameProcessor(
+            segmenterProvider = { FakeSegmenter() },
+            compositorProvider = { fakeCompositor },
+            onMetricsEvent = { payload -> payloads.add(payload) },
+        )
+        processor.setBlurEffect(10.0f)
+
+        val buffer = rgbBuffer()
+        // Open the window, stay under 1 s (no sample yet).
+        var ts = 1_000_000_000L
+        repeat(10) {
+            processor.onFrame(VideoFrame(buffer, 0, ts))
+            ts += 33_000_000L
+        }
+        // Background/foreground jump: > 3 s gap must reset, not emit a
+        // near-zero fps sample for the stale window.
+        ts = 10_000_000_000L
+        repeat(35) {
+            processor.onFrame(VideoFrame(buffer, 0, ts))
+            ts += 33_000_000L
+        }
+
+        assertEquals(1, payloads.size)
+        val fps = payloads[0]["outputFps"] as Double
+        assertTrue(fps in 15.0..60.0, "fps=$fps after gap reset")
+
+        processor.release()
+    }
+
+    @Test
+    fun metricsEmit_withoutEffect_neverEmits() {
+        val payloads = mutableListOf<Map<String, Any?>>()
+        val fakeCompositor = FakeCompositor()
+        val processor = FrameProcessor(
+            segmenterProvider = { FakeSegmenter() },
+            compositorProvider = { fakeCompositor },
+            onMetricsEvent = { payload -> payloads.add(payload) },
+        )
+
+        var ts = 1_000_000_000L
+        val buffer = rgbBuffer()
+        repeat(60) {
+            processor.onFrame(VideoFrame(buffer, 0, ts))
+            ts += 33_000_000L
+        }
+
+        assertTrue(payloads.isEmpty())
+
+        processor.release()
+    }
+
+    @Test
+    fun metricsEmit_withoutListener_buildsNoPayloadAndDoesNotCrash() {
+        val fakeCompositor = FakeCompositor()
+        fakeCompositor.uploadMask(PersonMask(ByteArray(4), 2, 2))
+        val processor = FrameProcessor(
+            segmenterProvider = { FakeSegmenter() },
+            compositorProvider = { fakeCompositor },
+        )
+        processor.setBlurEffect(10.0f)
+
+        var ts = 1_000_000_000L
+        val buffer = rgbBuffer()
+        repeat(60) {
+            processor.onFrame(VideoFrame(buffer, 0, ts))
+            ts += 33_000_000L
+        }
+
+        // onMetricsEvent null: gate returns before building any map.
+        assertEquals(60, processor.frameCount)
+
+        processor.release()
+    }
+
     // --- T14.4 (FR-21): fallback recovery ---
 
     private class RecoveryFixture(
