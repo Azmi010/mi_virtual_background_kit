@@ -73,10 +73,55 @@ await kit.attach(track); // effect from step 2 survives the switch
 
 ## LiveKit
 
-Works because LiveKit's Flutter SDK (`livekit_client`) is built on
-`flutter_webrtc`: a published local camera track exposes the underlying
-`MediaStreamTrack`, which is what `attach` takes. No LiveKit dependency is
-pulled into this package.
+The recommended path is the separate adapter package
+`mi_virtual_background_kit_livekit`. It depends on the core package and
+`livekit_client`, so apps that do not use LiveKit never pull those dependencies.
+
+```yaml
+dependencies:
+  mi_virtual_background_kit_livekit: ^0.2.0
+```
+
+```dart
+import 'package:livekit_client/livekit_client.dart';
+import 'package:mi_virtual_background_kit/mi_virtual_background_kit.dart';
+import 'package:mi_virtual_background_kit_livekit/mi_virtual_background_kit_livekit.dart';
+
+final room = Room();
+await room.connect(wsUrl, token);
+await room.localParticipant!.setCameraEnabled(true);
+
+// Wait until the camera publication exists, then grab the track.
+LocalVideoTrack? local;
+while (local == null) {
+  await Future<void>.delayed(const Duration(milliseconds: 100));
+  for (final p in room.localParticipant!.videoTrackPublications) {
+    final t = p.track;
+    if (t is LocalVideoTrack) local = t;
+  }
+}
+
+final vb = LiveKitVirtualBackground(room: room);
+await vb.attach(local!);
+await vb.setEffect(const BlurEffect(radius: 15));
+
+// Later: on room teardown.
+await vb.detach();
+await vb.dispose();
+await room.disconnect();
+```
+
+Passing `room:` lets the adapter recover after camera switch, mute/unmute,
+unpublish/republish, and track restart (ADR 0002 §5). Without it, only
+track-level recovery works; call `attach` again with the new track after
+republish. Remote tracks and non-camera sources such as screen share are not
+supported.
+
+### Manual recipe (no extra dependency)
+
+LiveKit's Flutter SDK is built on `flutter_webrtc`. A published local camera
+track exposes its underlying `MediaStreamTrack`, which the core `attach` takes.
+If you prefer not to add the adapter, wire the events yourself:
 
 ```dart
 import 'package:livekit_client/livekit_client.dart';
@@ -88,7 +133,6 @@ final room = Room();
 await room.connect(wsUrl, token);
 await room.localParticipant!.setCameraEnabled(true);
 
-// Wait until the camera publication exists, then grab the track.
 LocalVideoTrack? local;
 while (local == null) {
   await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -106,20 +150,15 @@ await kit.dispose();
 await room.disconnect();
 ```
 
-Notes:
+With the manual recipe, re-attach after camera switch, mute, republish, and
+restart — LiveKit replaces the `MediaStreamTrack` each time. Only **local,
+published** camera tracks are supported; remote participants' video is not
+processed. Shared camera tracks are handled in core since 0.2 (ADR 0002 §6),
+so stopping other local captures first is no longer required.
 
-- Only **local, published** camera tracks. Remote participants' video is not
-  processed (see README limitations).
-- **Shared camera tracks work since 0.2** (ADR 0002 §6). `flutter_webrtc`
-  reuses an already-open camera session for a second `getUserMedia`, but the
-  kit redirects `attach` to the object that actually processes frames, so no
-  workaround is needed anymore. Stopping other local captures first remains
-  fine, just no longer required.
-- If the user switches camera through LiveKit, re-attach the kit the same way
-  as in the flutter_webrtc section.
-- A runnable version of this recipe lives in
-  [`example/lib/livekit_page.dart`](../example/lib/livekit_page.dart) (dev
-  server + `adb reverse`, credentials are LiveKit's public `--dev` defaults).
+A runnable adapter example lives in
+[`example/lib/livekit_page.dart`](../example/lib/livekit_page.dart) (dev
+server + `adb reverse`, credentials are LiveKit's public `--dev` defaults).
 
 ## Next
 

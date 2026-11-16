@@ -4,8 +4,9 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:mi_virtual_background_kit/mi_virtual_background_kit.dart';
+import 'package:mi_virtual_background_kit_livekit/mi_virtual_background_kit_livekit.dart';
 
-/// LiveKit integration demo (doc/integration.md, T7.4).
+/// LiveKit integration demo using the adapter (doc/integration.md, T15.5).
 ///
 /// Runs against `livekit/livekit-server --dev` on the host with
 /// `adb reverse tcp:7880 tcp:7880` (dev credentials are public by design).
@@ -22,7 +23,7 @@ class _LiveKitDemoPageState extends State<LiveKitDemoPage> {
   static const _apiSecret = 'secret';
   static const _roomName = 'demo';
 
-  final _kit = MiVirtualBackgroundKit();
+  LiveKitVirtualBackground? _vb;
   Room? _room;
   VideoTrack? _localTrack;
   String _status = 'connecting...';
@@ -62,6 +63,7 @@ class _LiveKitDemoPageState extends State<LiveKitDemoPage> {
     try {
       final room = Room();
       _room = room;
+      _vb = LiveKitVirtualBackground(room: room);
       room.addListener(_onRoomChanged);
       await room.connect(_url, _devToken());
       await room.localParticipant!.setCameraEnabled(true);
@@ -81,10 +83,10 @@ class _LiveKitDemoPageState extends State<LiveKitDemoPage> {
         throw StateError('local camera track was not published');
       }
 
-      // The kit attaches to the MediaStreamTrack LiveKit published — the same
-      // flutter_webrtc track the rest of this package is built around.
-      await _kit.attach(local.mediaStreamTrack);
-      await _kit.setEffect(const BlurEffect(radius: 15));
+      // The adapter forwards the published MediaStreamTrack to the core kit and
+      // re-attaches when LiveKit replaces it (camera switch, mute, restart).
+      await _vb!.attach(local);
+      await _vb!.setEffect(const BlurEffect(radius: 15));
       if (!mounted) return;
       setState(() {
         _localTrack = local;
@@ -102,14 +104,14 @@ class _LiveKitDemoPageState extends State<LiveKitDemoPage> {
   }
 
   Future<void> _set(String name, VirtualBackgroundEffect effect) async {
-    await _kit.setEffect(effect);
+    await _vb?.setEffect(effect);
     if (mounted) setState(() => _effectName = name);
   }
 
   @override
   void dispose() {
     _room?.removeListener(_onRoomChanged);
-    _kit.dispose();
+    _vb?.dispose();
     _room?.disconnect();
     _room?.dispose();
     super.dispose();
@@ -136,7 +138,7 @@ class _LiveKitDemoPageState extends State<LiveKitDemoPage> {
             child: Column(
               children: [
                 Text(
-                  '$_status  |  kit: ${_attached ? _effectName : "not attached"}',
+                  '$_status  |  adapter: ${_attached ? _effectName : "not attached"}',
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),

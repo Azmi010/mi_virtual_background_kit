@@ -46,7 +46,10 @@ Unsupported: remote tracks and non-camera sources such as screen share. Pass a
 published local camera `LocalVideoTrack` only. Core errors (`InvalidTrackException`,
 `UnsupportedPlatformException`) propagate unchanged.
 
-The manual `flutter_webrtc` recipe stays available in
+A runnable version lives in
+[`example/lib/livekit_page.dart`](https://github.com/Azmi010/mi_virtual_background_kit/blob/main/example/lib/livekit_page.dart).
+The manual `flutter_webrtc` recipe, for apps that do not want the adapter
+dependency, stays in
 [`doc/integration.md`](https://github.com/Azmi010/mi_virtual_background_kit/blob/main/doc/integration.md).
 
 ## License
