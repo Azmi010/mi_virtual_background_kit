@@ -12,6 +12,7 @@ import 'src/status/status.dart';
 export 'src/effects/effects.dart';
 export 'src/fallback/fallback.dart';
 export 'src/metrics/metrics.dart';
+export 'src/preview/preview.dart';
 export 'src/quality/quality.dart';
 export 'src/status/status.dart';
 

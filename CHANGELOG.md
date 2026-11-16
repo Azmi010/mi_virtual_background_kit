@@ -8,6 +8,13 @@ mempertahankan perilaku versi sebelumnya. Rincian: ADR 0002 butir 9.
 
 ## 0.2.0 (belum dirilis)
 
+* Preview controller `VirtualBackgroundPreviewController` (FR-17/FR-18):
+  `start`, `stop`, `setEffect`, `switchCamera`, `releaseToCaller`, dan `dispose`
+  idempoten. `releaseToCaller` menyerahkan stream, track, dan kit ke pemanggil
+  tanpa menghentikan kamera atau melepas efek.
+* Widget `VirtualBackgroundPreview` merender stream controller lewat renderer
+  `flutter_webrtc`, dengan `mirror` dan `fit` (`cover`/`contain`). Gagal start
+  atau izin kamera ditolak tampil sebagai pesan error + tombol retry, bukan crash.
 * **Breaking:** minimum SDK naik ke Dart 3.6.0 dan Flutter 3.27.0 (syarat pub
   workspace untuk paket adapter LiveKit).
 * **Breaking:** enum `FallbackAction` bertambah nilai `recovered` —

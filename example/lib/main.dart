@@ -8,6 +8,7 @@ import 'package:mi_virtual_background_kit/mi_virtual_background_kit.dart';
 
 import 'flicker_test_page.dart';
 import 'livekit_page.dart';
+import 'lobby_page.dart';
 import 't145_test_page.dart';
 
 void main() {
@@ -296,6 +297,25 @@ class _ExamplePageState extends State<ExamplePage> {
     if (mounted) await _start();
   }
 
+  Future<void> _openLobby() async {
+    // One camera session at a time, same hand-off as the other demo pages.
+    await _detach();
+    final stream = _stream;
+    _stream = null;
+    stream?.getTracks().forEach((t) => t.stop());
+    await stream?.dispose();
+    if (mounted) {
+      _renderer.srcObject = null;
+      setState(() => _prodAttached = false);
+    }
+
+    if (!mounted) return;
+    await Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => const LobbyPage()));
+
+    if (mounted) await _start();
+  }
+
   Future<void> _openFlickerTest() async {
     // Same clean hand-off as _openLiveKit: one camera session at a time.
     await _detach();
@@ -383,6 +403,11 @@ class _ExamplePageState extends State<ExamplePage> {
                 onPressed: _openLiveKit,
                 icon: const Icon(Icons.video_call, size: 18),
                 label: const Text('LiveKit'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: _openLobby,
+                icon: const Icon(Icons.live_help, size: 18),
+                label: const Text('Lobby'),
               ),
               FilledButton.tonalIcon(
                 onPressed: _openFlickerTest,
