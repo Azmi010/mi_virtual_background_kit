@@ -57,5 +57,9 @@ jobs:
       - run: tool/link_example_build.sh
       - run: flutter pub get
         working-directory: example
+      # Package.swift path-deps (../flutter_webrtc, ../FlutterFramework) need
+      # sibling symlinks under ios/ when the runner's Xcode canonicalizes the
+      # .packages symlink to the plugin's real path.
+      - run: tool/link_spm_siblings.sh
       - run: flutter build ios --debug --no-codesign --verbose
         working-directory: example
