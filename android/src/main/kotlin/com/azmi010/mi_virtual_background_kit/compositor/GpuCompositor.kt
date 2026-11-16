@@ -65,6 +65,25 @@ class GpuCompositor : FrameCompositor {
         return Handler(looper).also { toI420Handler = it }
     }
 
+    /**
+     * Single construction point for composited output buffers (T14.7).
+     * Every encoder-visible buffer goes through here so `toI420()` always
+     * gets the capture-thread handler from [outBufferHandler] — a null
+     * handler NPEs inside `ThreadUtils.invokeAtFrontUninterruptibly` over
+     * JNI and aborts native code (T7.4 crash).
+     */
+    internal fun createOutBuffer(width: Int, height: Int, textureId: Int): TextureBufferImpl =
+        TextureBufferImpl(
+            width,
+            height,
+            VideoFrame.TextureBuffer.Type.RGB,
+            textureId,
+            IDENTITY_MATRIX,
+            outBufferHandler(),
+            yuvConverter,
+            EMPTY_RELEASE_CALLBACK,
+        )
+
     private val tempMatrixValues = FloatArray(9)
     private val camMatrixArray = FloatArray(16)
     private val imgMatrixArray = FloatArray(16)
@@ -511,16 +530,7 @@ class GpuCompositor : FrameCompositor {
 
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
 
-        val outBuffer = TextureBufferImpl(
-            width,
-            height,
-            VideoFrame.TextureBuffer.Type.RGB,
-            outTexture,
-            IDENTITY_MATRIX,
-            outBufferHandler(),
-            yuvConverter,
-            EMPTY_RELEASE_CALLBACK,
-        )
+        val outBuffer = createOutBuffer(width, height, outTexture)
         return VideoFrame(outBuffer, frame.rotation, frame.timestampNs)
     }
 
@@ -587,16 +597,7 @@ class GpuCompositor : FrameCompositor {
 
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
 
-        val outBuffer = TextureBufferImpl(
-            width,
-            height,
-            VideoFrame.TextureBuffer.Type.RGB,
-            outTexture,
-            IDENTITY_MATRIX,
-            outBufferHandler(),
-            yuvConverter,
-            EMPTY_RELEASE_CALLBACK,
-        )
+        val outBuffer = createOutBuffer(width, height, outTexture)
         return VideoFrame(outBuffer, frame.rotation, frame.timestampNs)
     }
 
@@ -671,16 +672,7 @@ class GpuCompositor : FrameCompositor {
 
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
 
-        val outBuffer = TextureBufferImpl(
-            width,
-            height,
-            VideoFrame.TextureBuffer.Type.RGB,
-            outTexture,
-            IDENTITY_MATRIX,
-            outBufferHandler(),
-            yuvConverter,
-            EMPTY_RELEASE_CALLBACK,
-        )
+        val outBuffer = createOutBuffer(width, height, outTexture)
         return VideoFrame(outBuffer, frame.rotation, frame.timestampNs)
     }
 
@@ -689,16 +681,7 @@ class GpuCompositor : FrameCompositor {
      */
     override fun reuseLastFrame(frame: VideoFrame): VideoFrame? {
         if (outTexture == 0 || outWidth == 0 || outHeight == 0) return null
-        val outBuffer = TextureBufferImpl(
-            outWidth,
-            outHeight,
-            VideoFrame.TextureBuffer.Type.RGB,
-            outTexture,
-            IDENTITY_MATRIX,
-            outBufferHandler(),
-            yuvConverter,
-            EMPTY_RELEASE_CALLBACK,
-        )
+        val outBuffer = createOutBuffer(outWidth, outHeight, outTexture)
         return VideoFrame(outBuffer, frame.rotation, frame.timestampNs)
     }
 

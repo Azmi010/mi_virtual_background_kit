@@ -96,6 +96,56 @@ void main() {
       expect(a.hashCode, equals(b.hashCode));
       expect(a, isNot(equals(c)));
       expect(a.toString(), contains('FallbackAction.disabled'));
+
+      // Field-by-field inequality: each comparison line of == must run
+      // (short-circuit otherwise hides reason/width/targetFps checks).
+      const sameAction = FallbackAction.disabled;
+      expect(
+        a,
+        isNot(
+          equals(
+            const PerformanceFallbackEvent(
+              action: sameAction,
+              reason: 'other',
+            ),
+          ),
+        ),
+      );
+      expect(
+        a,
+        isNot(
+          equals(
+            const PerformanceFallbackEvent(
+              action: sameAction,
+              reason: 'timeout',
+              segmentationWidth: 192,
+            ),
+          ),
+        ),
+      );
+      expect(
+        a,
+        isNot(
+          equals(
+            const PerformanceFallbackEvent(
+              action: sameAction,
+              reason: 'timeout',
+              targetFps: 15,
+            ),
+          ),
+        ),
+      );
+      expect(
+        a.hashCode,
+        isNot(
+          equals(
+            const PerformanceFallbackEvent(
+              action: sameAction,
+              reason: 'other',
+            ).hashCode,
+          ),
+        ),
+      );
     });
   });
 }
