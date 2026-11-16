@@ -1,0 +1,30 @@
+name: mi_virtual_background_kit_livekit
+description: >-
+  LiveKit adapter for mi_virtual_background_kit: attach virtual backgrounds to
+  LiveKit local video tracks. On-device, no network, no telemetry.
+version: 0.2.0
+repository: https://github.com/Azmi010/mi_virtual_background_kit
+issue_tracker: https://github.com/Azmi010/mi_virtual_background_kit/issues
+topics:
+  - livekit
+  - webrtc
+  - video-call
+  - virtual-background
+  - blur
+
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+  flutter: '>=3.27.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  mi_virtual_background_kit: ^0.2.0
+  livekit_client: '>=2.13.1 <2.14.0'
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

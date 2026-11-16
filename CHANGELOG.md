@@ -8,6 +8,8 @@ mempertahankan perilaku versi sebelumnya. Rincian: ADR 0002 butir 9.
 
 ## 0.2.0 (belum dirilis)
 
+* **Breaking:** minimum SDK naik ke Dart 3.6.0 dan Flutter 3.27.0 (syarat pub
+  workspace untuk paket adapter LiveKit).
 * **Breaking:** enum `FallbackAction` bertambah nilai `recovered` —
   `switch` eksaustif atas `FallbackAction` di kode konsumen perlu satu cabang
   baru (kebijakan ADR 0002 butir 9: minor + catatan Breaking).

@@ -18,6 +18,8 @@ jobs:
       - run: flutter analyze
       - run: dart format --set-exit-if-changed .
       - run: flutter test
+      - run: flutter analyze
+        working-directory: livekit
       - run: flutter pub get
         working-directory: example
       - run: flutter analyze

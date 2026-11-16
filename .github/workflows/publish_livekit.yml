@@ -1,0 +1,15 @@
+name: Publish LiveKit adapter to pub.dev
+
+on:
+  push:
+    tags:
+      # must match the tag-pattern configured on pub.dev: 'livekit-v{{version}}'
+      - 'livekit-v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  publish:
+    permissions:
+      id-token: write # Required for authentication using OIDC
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
+    with:
+      working-directory: livekit
