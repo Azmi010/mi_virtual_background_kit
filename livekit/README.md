@@ -20,14 +20,31 @@ import 'package:livekit_client/livekit_client.dart';
 import 'package:mi_virtual_background_kit/mi_virtual_background_kit.dart';
 import 'package:mi_virtual_background_kit_livekit/mi_virtual_background_kit_livekit.dart';
 
-// `local` is a LocalVideoTrack from room.localParticipant!.videoTrackPublications.
-final vb = LiveKitVirtualBackground();
+// `room` is the connected Room; `local` is a LocalVideoTrack from
+// room.localParticipant!.videoTrackPublications.
+final vb = LiveKitVirtualBackground(room: room);
 await vb.attach(local, quality: BackgroundQuality.balanced);
 await vb.setEffect(const BlurEffect(radius: 12));
 
 await vb.detach();
 await vb.dispose();
 ```
+
+## Lifecycle
+
+With `room:`, the adapter follows mechanism C from ADR 0002 §5:
+
+- Camera switch, unmute, and track restart re-attach automatically when LiveKit
+  replaces the underlying `MediaStreamTrack` (`TrackStreamUpdatedEvent`).
+- Unpublish detaches; republish attaches the new camera track automatically.
+- `detach` is idempotent and keeps room listeners, so republish still works.
+
+Without `room:`, only track-level recovery works. Republish and unpublish are
+not observed; call `attach` again with the new track.
+
+Unsupported: remote tracks and non-camera sources such as screen share. Pass a
+published local camera `LocalVideoTrack` only. Core errors (`InvalidTrackException`,
+`UnsupportedPlatformException`) propagate unchanged.
 
 The manual `flutter_webrtc` recipe stays available in
 [`doc/integration.md`](https://github.com/Azmi010/mi_virtual_background_kit/blob/main/doc/integration.md).
