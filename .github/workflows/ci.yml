@@ -42,6 +42,45 @@ jobs:
       - run: flutter build apk --debug
         working-directory: example
 
+  version-bounds:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # livekit_client pins flutter_webrtc exactly, so each adapter bound
+          # forces the matching WebRTC version.
+          - webrtc: 1.6.2+hotfix.4
+            livekit: 2.13.1
+          - webrtc: 1.6.3
+            livekit: 2.13.2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Pin dependency bounds
+        run: |
+          sed -i "s/flutter_webrtc: \^1.6.2/flutter_webrtc: ${{ matrix.webrtc }}/" pubspec.yaml example/pubspec.yaml livekit/pubspec.yaml
+          sed -i "s/livekit_client: \^2.13.1/livekit_client: ${{ matrix.livekit }}/" example/pubspec.yaml
+          sed -i "s/livekit_client: '>=2.13.1 <2.14.0'/livekit_client: ${{ matrix.livekit }}/" livekit/pubspec.yaml
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter analyze
+        working-directory: livekit
+      - run: flutter test
+        working-directory: livekit
+      - run: flutter pub get
+        working-directory: example
+      - run: flutter build apk --debug
+        working-directory: example
+
   ios:
     runs-on: macos-latest
     steps:
