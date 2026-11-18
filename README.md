@@ -112,9 +112,9 @@ Switch any of them at runtime (`setEffect`), change quality live
   device cannot keep up (FR-12), so you can inform the user instead of
   shipping a frozen video.
 - `metricsStream` → local diagnostics about once per second while an effect
-  is active: output fps, last segmentation latency, and mask age
-  (`BackgroundMetrics`). Reporting only runs while you listen; nothing ever
-  leaves the device.
+  is active: output fps, last segmentation latency, mask age, and processor
+  latency (`BackgroundMetrics`). Reporting only runs while you listen; nothing
+  ever leaves the device.
 
 ## Performance
 
@@ -153,6 +153,11 @@ published local camera track directly. Recipe + runnable example:
 - No image hosting or library: the app supplies background images.
 - Performance varies by device; conservative defaults, adaptive fallback,
   honest numbers in the benchmark doc.
+- Processor latency (frame delivered to the native processor → composited
+  frame returned to WebRTC, from `BackgroundMetrics.processorLatencyMs`):
+  Samsung SM-A135F median 0.9 ms, mean 6.0 ms (p95 27.2 ms on frames doing
+  mask readback); iPhone 15 median 1.4 ms. This is not a glass-to-glass
+  number — camera sensor readout and screen display are not included.
 
 ## License
 

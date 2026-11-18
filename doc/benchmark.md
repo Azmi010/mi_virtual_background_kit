@@ -129,3 +129,129 @@ Tanggal: 3 November 2026 · Tool: `flutter run -d <I1> --debug` + monitor 60 dtk
 ### Gap tersisa T6.5
 
 - Memori soak iOS tidak terukur (perlu Instruments/`xcrun` khusus) — stabilitas dan fps sudah terbukti.
+
+## v0.2.0 — benchmark ulang (T17.1)
+
+Tanggal: 17 November 2026.  
+Protokol: 10 menit per efek, `BackgroundQuality.balanced`, kamera depan 640×480 @30 fps, radius blur 20. Sama dengan protokol v0.1; bedanya sumber angka fps — v0.2 memakai sample native `metricsStream` (~1 Hz), bukan HUD `flutter:` lama. Data mentah tidak disimpan; angka di bawah adalah ringkasan hasil.
+
+A1 memakai Wi-Fi adb dengan kabel dicabut (`bstate=3` sepanjang sesi). I1 memakai USB untuk sesi integration; baterai iOS diukur terpisah pada sesi app standalone tanpa kabel. CPU/memori iOS tidak diukur di T17.1 — cakupan T17.2 (Instruments).
+
+### FPS — A1 (Android low)
+
+| Efek | n | mean | median | min | v0.1 mean | Δ |
+|------|---|------|--------|-----|-----------|---|
+| None | — | **29,96**¹ | — | — | 29,8 | +0,2 |
+| Blur | 584 | **29,84** | 30,0 | 24,2 | 28,4 | +1,4 |
+| Image cover | 583 | **29,83** | 30,0 | 17,3 | 28,4 | +1,4 |
+| Color teal | 583 | **29,82** | 30,0 | 20,0 | 30,0 | −0,2 |
+
+¹ `NoEffect` tidak menghasilkan sample metrik (bypass langsung kembali sebelum gate). Angka diturunkan dari logcat: `frame pass #1` 11:14:23.090 → `#18000` 11:24:23.818 = 17.999 frame / 600,7 s.
+
+### FPS — I1 (iOS high)
+
+| Efek | n | mean | median | min | v0.1 mean | Δ |
+|------|---|------|--------|-----|-----------|---|
+| None | — | tidak diukur² | — | — | 30,0 | — |
+| Blur | 600 | **30,00** | 30,0 | 30,0 | 30,0 | 0 |
+| Image cover | 600 | **30,00** | 30,0 | 30,0 | 30,0 | 0 |
+| Color teal | 601 | **30,00** | 30,0 | 30,0 | 30,0 | 0 |
+
+² Bypass tidak menghasilkan sample metrik, dan harness iOS tidak merekam log frame pass. Angka v0.1 (30,0) dipertahankan sebagai acuan; tidak ada alasan kode untuk berubah pada jalur bypass.
+
+### Latensi per frame (baru di v0.2, FR-23)
+
+Rata-rata sample 1 Hz. `seg` = durasi inferensi segmentasi terakhir; `age` = usia mask yang sedang dikomposit.
+
+| Efek | A1 seg | A1 age | I1 seg | I1 age |
+|------|--------|--------|--------|--------|
+| Blur | 84,0 ms | 115,4 ms | 63,9 ms | 131,2 ms |
+| Image cover | 79,1 ms | 107,2 ms | 113,0 ms | 284,2 ms |
+| Color teal | 79,6 ms | 108,1 ms | 115,5 ms | 253,6 ms |
+
+Angka A1 sesuai model landscape (spike T13.4: 87,9 ms). Angka iOS tidak dibandingkan lintas efek secara ketat — beban scene dan frekuensi segmentasi berbeda tiap sesi.
+
+### CPU dan memori — A1
+
+| Efek | CPU% (mean) | Pss mean | Pss awal → akhir |
+|------|-------------|----------|------------------|
+| None | 40,1% | 278,5 MB | 275,5 → 279,8 MB |
+| Blur | 127,8% | 299,9 MB | 290,0 → 305,3 MB |
+| Image cover | 114,0% | 307,1 MB | 297,3 → 311,8 MB |
+| Color teal | 122,2% | 303,3 MB | 296,3 → 307,3 MB |
+
+CPU% diverifikasi silang dengan `dumpsys cpuinfo` (blur 127%, image 116%, color 114%, none 39%). Angka absolut **tidak langsung sejajar** dengan v0.1: v0.2 diukur dari harness `flutter test integration_test`, v0.1 dari app standalone. Pss efek aktif v0.2 lebih tinggi ~13–20 MB daripada v0.1 (~285–290 MB); kenaikan ini dicatat apa adanya, bukan dianggap noise.
+
+iOS: CPU/memori tidak diukur di sesi T17.1; lihat bagian T17.2 di bawah.
+
+### Baterai
+
+A1 — dari sesi integration 10 menit, kabel dicabut:
+
+| Efek | Awal | Akhir | Turun |
+|------|------|-------|-------|
+| None | 60% | 57% | 3 poin |
+| Blur | 57% | 54% | 3 poin |
+| Image cover | 54% | 52% | 2 poin |
+| Color teal | 52% | 50% | 2 poin |
+
+Total 60% → 50% dalam 40 menit (~2,5 poin per 10 menit).
+
+I1 — sesi app standalone terpisah, tanpa kabel, efek dipilih manual (None / Blur radius 20 / Teal / Asset Office):
+
+| Efek | Awal | Akhir | Turun |
+|------|------|-------|-------|
+| None | 88% | 87% | 1 poin |
+| Blur | 87% | 83% | 4 poin |
+| Color teal | 83% | 81% | 2 poin |
+| Image cover | 81% | 78% | 3 poin |
+
+Catatan: angka iOS berasal dari sesi berbeda dengan angka fps, bukan dari harness yang sama. Hal ini menjadi batasan metode, bukan hasil pengukuran yang cacat.
+
+### Anomali
+
+- A1 image: tiga sample di t≈411,7–413,8 s turun ke 17,3–22,8 fps sementara `seg` tetap 68–76 ms. Pulih dalam 1 detik, tidak memicu fallback — gangguan sesaat di luar segmentasi.
+- I1 color: satu sample `seg` 829 ms; fps tetap 30,0, tidak ada fallback.
+
+### Kesimpulan vs T17.1
+
+| Target | Status |
+|--------|--------|
+| Tidak ada regresi fps vs v0.1 | ✅ A1 blur/image +1,4; I1 30,0 semua efek aktif |
+| Baterai terukur di dua platform | ✅ A1 dari integration; iOS dari sesi standalone terpisah |
+| CPU/memori | ⚠️ A1 tersedia; iOS masih gap (T17.2) |
+| Tiga kelas perangkat | ❌ tetap dua device; kelas mid tidak tersedia (T12.3) |
+
+## CPU dan memori iOS — Instruments (T17.2)
+
+Tanggal: 18 November 2026.  
+Metode: `xctrace record` dengan template **Activity Monitor**, attach ke proses `Runner.app` yang diverifikasi (dua instance terpasang di device; yang salah dimatikan lebih dulu). Sesi utama: soak 30 menit dengan `BlurEffect(radius: 20)`. Sesi pendek 5 menit untuk efek lain. Data mentah tidak disimpan; angka di bawah adalah ringkasan hasil.
+
+| Efek | Durasi | CPU% mean | CPU% median | CPU% maks | Memory (physical footprint) | Real Mem |
+|------|--------|-----------|-------------|-----------|------------------------------|----------|
+| None | 5 mnt | 19,1% | 19,1% | 20,2% | 273,7 MB | 442,9 MB |
+| Blur (soak) | 30 mnt | **115,4%** | 122,0% | 146,3% | 288,1 MB | 433,1 MB |
+| Image (Asset Office) | 5 mnt | 100,8% | 99,4% | 131,8% | 291,3 MB | 587,3 MB |
+| Color teal | 5 mnt | 99,7% | 98,7% | 126,8% | 288,0 MB | 621,6 MB |
+
+Soak 30 menit menghasilkan 1.728 sampel (~1 Hz), dari `00:00.000` sampai `29:59.264`. CPU rata-rata naik dari **97,4%** pada 5 menit pertama menjadi **123,9%** pada 5 menit terakhir. Memory physical footprint tetap **291,2 → 286,7 MB**, Real Mem **442,1 → 437,1 MB** — tidak ada pertumbuhan berkelanjutan. Kenaikan CPU tidak disertai pembengkakan memori dan tidak ada pengukuran fps pada sesi ini, jadi lebih mungkin perubahan beban/scene daripada kebocoran.
+
+Efek aktif mengonsumsi ~100–115% CPU, sebanding dengan A1 (114–128%). `None` di iOS jauh lebih murah (19,1%) daripada A1 (40,1%); angka keduanya berasal dari alat berbeda (Activity Monitor vs `top`), jadi tidak dibandingkan langsung.
+
+**Kesimpulan T17.2:** celah CPU/memori iOS dari T6.2 dan T6.5 tertutup. Tidak ada indikasi kebocoran memori pada soak 30 menit.
+
+## Latensi frame → output (T17.3)
+
+Tanggal: 18 November 2026.  
+Sumber: `metricsStream.processorLatencyMs`, efek `ColorEffect(teal)`, `BackgroundQuality.balanced`, 640×480 @30 fps, sesi 2 menit per device. Data mentah tidak disimpan; angka di atas adalah ringkasan hasil.
+
+| Device | n | mean | median | min | maks | p95 |
+|--------|---|------|--------|-----|------|-----|
+| A1 (Android low) | 116 | 5,97 ms | **0,90 ms** | 0,50 ms | 32,20 ms | 27,20 ms |
+| I1 (iOS high) | 120 | 1,33 ms | **1,40 ms** | 1,00 ms | 1,60 ms | 1,50 ms |
+
+Distribusi A1 dua puncak: 92/116 sampel ≈ 1,4 ms, 24/116 sampel ≈ 23,5 ms. Sampel lambat bertepatan dengan frame yang melakukan readback/upload mask untuk segmentasi; komposit GPU sendiri tetap ~1 ms. I1 stabil di ~1,3–1,4 ms.
+
+**Definisi:** waktu mulai = frame tiba di processor native; waktu akhir = frame hasil komposit dikembalikan ke WebRTC. Angka ini **tidak** mencakup pembacaan sensor kamera, encode, jaringan, atau render layar — bukan angka glass-to-glass. Angka ini dipublikasikan juga di README bagian Limitations.
+
+**Kesimpulan T17.3:** angka latensi pipeline tersedia untuk kedua platform dan dipublikasikan di README.
