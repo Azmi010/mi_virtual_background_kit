@@ -116,3 +116,39 @@ builds, then restore a real `example/build` directory before building the
 Android APK). `flutter run` still worked; a freshly installed standalone APK
 from the symlinked build hung before the first frame. Rebuild from a real
 `example/build` directory and reinstall.
+
+## 16. How do I show a preview before joining a call?
+
+Use `VirtualBackgroundPreviewController` plus `VirtualBackgroundPreview`:
+`start()` opens the camera and attaches the kit, `setEffect()` changes the
+background, and `releaseToCaller()` hands the live stream, track, and kit to the
+call without stopping the camera. `stop()` and `dispose()` are idempotent; after
+handoff, `dispose()` does not touch the track. See
+[integration.md](integration.md#preview-and-handoff-pre-join-lobby).
+
+## 17. The effect was disabled by a fallback. How do I get it back?
+
+Call `await kit.resumeEffect()` once load drops. For automatic recovery, attach
+with `BackgroundQuality(autoRecovery: true)`: the kit restores quality and the
+effect after two healthy fps windows, then latches after a second failure to
+avoid oscillation. Listen to `fallbackStream` for
+`FallbackAction.disabled` / `recovered`. `recovered` is new in 0.2 — add a
+branch to exhaustive `switch` statements.
+
+## 18. Does `metricsStream` cost anything or send data anywhere?
+
+No. The native side builds a sample only while the stream has listeners and
+emits about once per second. It contains local fps, segmentation latency, mask
+age, and processor latency (`BackgroundMetrics`). Nothing leaves the device.
+Device measurements showed no meaningful fps regression with a listener
+attached.
+
+## 19. LiveKit dev server on a physical iPhone fails with "No route to host"
+
+Use the host's LAN IP instead of `127.0.0.1`, for example
+`ws://192.168.1.5:7880`, and start the server with `--bind 0.0.0.0`. The app must
+also have Local Network permission: the first local connection triggers an iOS
+dialog — tap **Allow** (or check Settings → Privacy & Security → Local Network).
+`flutter test` reinstalls the app each run, so the dialog can appear again. When
+writing an integration test, absorb the first failed socket before calling
+`Room.connect()`.

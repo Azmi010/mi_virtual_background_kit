@@ -25,16 +25,19 @@ background of the local camera track, behind a small Dart API.
 |----------|--------|
 | Android  | ✅ minSdk 24, OpenGL ES 2.0+ |
 | iOS      | ✅ iOS 15.0+, Metal |
-| Web      | ❌ not in v0.1 |
-| Desktop  | ❌ not in v0.1 |
+| Web      | ❌ not supported |
+| Desktop  | ❌ not supported |
 
-Requires `flutter_webrtc: ^1.6.2` (tested through `1.6.3`).
+Requires `flutter_webrtc: ^1.6.2` (tested through `1.6.3`) and Dart 3.6 /
+Flutter 3.27 or newer.
 
 ## Install
 
 ```yaml
 dependencies:
-  mi_virtual_background_kit: ^0.1.0
+  mi_virtual_background_kit: ^0.2.0
+  # Add only if you use LiveKit:
+  mi_virtual_background_kit_livekit: ^0.2.0
 ```
 
 ### Native setup
@@ -102,6 +105,49 @@ Full walkthrough, camera switching, and performance tips:
 Switch any of them at runtime (`setEffect`), change quality live
 (`setQuality`), all without touching the camera track.
 
+## Preview (pre-join lobby)
+
+`VirtualBackgroundPreviewController` opens the camera, attaches the kit, and
+`VirtualBackgroundPreview` renders the result. `releaseToCaller()` hands the
+still-running track and kit to your call UI without stopping the camera:
+
+```dart
+final controller = VirtualBackgroundPreviewController(
+  quality: BackgroundQuality.balanced,
+);
+await controller.start();
+await controller.setEffect(ImageEffect.asset('assets/office.jpg'));
+
+// In your widget tree:
+VirtualBackgroundPreview(controller: controller, mirror: true);
+
+// When the user joins the call:
+final handoff = await controller.releaseToCaller();
+// handoff.stream / handoff.track / handoff.kit are now yours to dispose.
+await controller.dispose();
+```
+
+`controller.switchCamera()` re-attaches and keeps the last effect. `stop()` and
+`dispose()` are idempotent. After handoff, `dispose()` does not touch the track.
+
+## LiveKit
+
+For LiveKit apps, prefer the separate adapter package. It depends on the core
+plus `livekit_client`, so other apps do not pull those dependencies:
+
+```dart
+final vb = LiveKitVirtualBackground(room: room);
+await vb.attach(localVideoTrack, quality: BackgroundQuality.balanced);
+await vb.setEffect(const BlurEffect(radius: 12));
+await vb.detach();
+await vb.dispose();
+```
+
+Passing `room:` keeps the effect across camera switches, mute/unmute,
+unpublish/republish, and track restarts. Remote tracks and screen share are not
+supported. See the [integration guide](https://github.com/Azmi010/mi_virtual_background_kit/blob/main/doc/integration.md#livekit)
+for the full recipe and a dependency-free manual alternative.
+
 ## Status, errors, and performance fallback
 
 - `statusStream` → `ProcessorStatus` (`idle`, `initializing`, `active`,
@@ -116,6 +162,25 @@ Switch any of them at runtime (`setEffect`), change quality live
   latency (`BackgroundMetrics`). Reporting only runs while you listen; nothing
   ever leaves the device.
 
+A stage-2 fallback disables the effect and moves status to `idle`. Call
+`resumeEffect()` when load drops, or enable hysteresis-based auto recovery:
+
+```dart
+await kit.attach(
+  track,
+  quality: const BackgroundQuality(autoRecovery: true),
+);
+kit.fallbackStream.listen((event) {
+  if (event.action == FallbackAction.disabled) showRecoveryHint();
+  if (event.action == FallbackAction.recovered) hideRecoveryHint();
+});
+await kit.resumeEffect(); // manual path; no-op when the effect is still active
+```
+
+Auto recovery waits for healthy fps over two windows and latches after a second
+failure, so it cannot oscillate. `FallbackAction.recovered` is new in 0.2 —
+exhaustive `switch` statements need a `recovered` branch.
+
 ## Performance
 
 Measured 10-minute sessions (see [doc/benchmark.md](https://github.com/Azmi010/mi_virtual_background_kit/blob/main/doc/benchmark.md)):
@@ -129,13 +194,6 @@ Conservative defaults (`segmentationWidth: 256`) can be tuned per call with
 `BackgroundQuality`; 32-bit devices segment noticeably slower — start with
 `BackgroundQuality.low` there.
 
-## LiveKit
-
-LiveKit's Flutter SDK is built on `flutter_webrtc`, so the kit attaches to the
-published local camera track directly. Recipe + runnable example:
-**[doc/integration.md](https://github.com/Azmi010/mi_virtual_background_kit/blob/main/doc/integration.md#livekit)** and
-[`example/lib/livekit_page.dart`](https://github.com/Azmi010/mi_virtual_background_kit/blob/main/example/lib/livekit_page.dart).
-
 ## Documentation
 
 - [Integration guide (flutter_webrtc + LiveKit)](https://github.com/Azmi010/mi_virtual_background_kit/blob/main/doc/integration.md)
@@ -148,7 +206,9 @@ published local camera track directly. Recipe + runnable example:
 ## Limitations
 
 - Local camera track only — remote participants' video is not processed.
-- Android + iOS only in v0.1; no web/desktop.
+  Shared camera tracks (a second `getUserMedia` on an open camera) are handled
+  since 0.2 by redirecting the processor to the wired track.
+- Android + iOS only; no web/desktop.
 - No noise suppression, beauty filters, or AR effects.
 - No image hosting or library: the app supplies background images.
 - Performance varies by device; conservative defaults, adaptive fallback,

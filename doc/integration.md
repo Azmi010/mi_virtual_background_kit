@@ -1,8 +1,9 @@
 # Integration guide
 
 How to attach `mi_virtual_background_kit` to camera tracks from
-`flutter_webrtc` and from LiveKit. Verified on device with the app in
-[`example/`](../example) (Android: Samsung SM-A135F, iOS: iPhone 15).
+`flutter_webrtc` and LiveKit, and how to use the pre-join preview widget.
+Verified on device with the app in [`example/`](../example) (Android: Samsung
+SM-A135F, iOS: iPhone 15).
 
 ## Common rules
 
@@ -15,7 +16,11 @@ How to attach `mi_virtual_background_kit` to camera tracks from
   the track stops and `dispose()` when the widget/page is torn down (both are
   idempotent).
 - Listen to `statusStream` (`idle` → `initializing` → `active`, or `error`) and
-  `fallbackStream` to surface performance problems to the user.
+  `fallbackStream` to surface performance problems to the user. `metricsStream`
+  gives local-only fps, segmentation latency, and mask age about once per second.
+- Shared camera tracks are supported since 0.2: `attach` redirects the processor
+  to the track that actually receives frames, so a second `getUserMedia` on an
+  open camera works without stopping other captures first.
 
 ## flutter_webrtc
 
@@ -69,7 +74,65 @@ await kit.attach(track); // effect from step 2 survives the switch
   `kit.setQuality(...)`.
 - If the device still cannot keep up, the kit downgrades quality and finally
   disables the effect on its own, emitting events on `fallbackStream` — show a
-  SnackBar and offer `setEffect(...)` again when the load drops.
+  SnackBar and call `kit.resumeEffect()` when the load drops.
+- Set `BackgroundQuality.autoRecovery: true` to let the kit restore a degraded
+  quality and a disabled effect after two healthy fps windows. A one-shot latch
+  prevents repeated auto recovery after a second failure; only `setEffect`,
+  `setQuality`, or `resumeEffect()` arms it again. `FallbackAction.recovered`
+  is new in 0.2 and needs a branch in exhaustive `switch` statements.
+
+### Recovery and metrics
+
+```dart
+await kit.attach(
+  track,
+  quality: const BackgroundQuality(
+    maskTemporalSmoothing: 0.7,
+    autoRecovery: true,
+  ),
+);
+
+kit.fallbackStream.listen((event) {
+  // action: qualityDegraded | disabled | recovered
+});
+kit.metricsStream.listen((m) {
+  // m.outputFps, m.segmentationLatencyMs, m.maskAgeMs, m.processorLatencyMs
+});
+
+await kit.resumeEffect(); // manual recovery after 'disabled'
+```
+
+`metricsStream` reports only while it has listeners. Nothing is transmitted.
+
+## Preview and handoff (pre-join lobby)
+
+Use the preview controller to show the effect before joining a call, then hand
+the running camera track to the call without a restart:
+
+```dart
+import 'package:mi_virtual_background_kit/mi_virtual_background_kit.dart';
+
+final controller = VirtualBackgroundPreviewController(
+  quality: BackgroundQuality.balanced,
+);
+await controller.start();
+await controller.setEffect(const BlurEffect(radius: 12));
+
+// Widget tree:
+VirtualBackgroundPreview(controller: controller, mirror: true, fit: BackgroundFit.cover);
+
+// On join — camera stays on, effect stays attached:
+final handoff = await controller.releaseToCaller();
+final stream = handoff.stream;
+final track = handoff.track;
+final kit = handoff.kit;
+// Give these three to your flutter_webrtc or LiveKit call, then dispose them
+// when the call ends.
+await controller.dispose(); // no-op on the handed-off track
+```
+
+`controller.switchCamera()` re-attaches and keeps the last effect. `stop()` and
+`dispose()` are idempotent. An effect set before `start()` is remembered.
 
 ## LiveKit
 
