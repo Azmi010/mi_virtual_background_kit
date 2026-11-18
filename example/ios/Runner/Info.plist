@@ -8,6 +8,13 @@
 	<string>Camera access is needed to show the local preview with virtual background effects.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Microphone access is needed for video call audio.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Local network access is needed to connect to a LiveKit dev server on the host machine.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

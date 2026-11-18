@@ -86,6 +86,7 @@ void main() {
   late MiVirtualBackgroundKit kit;
   late MediaStream stream;
   late MediaStreamTrack track;
+  late RTCVideoRenderer renderer;
 
   setUp(() async {
     kit = MiVirtualBackgroundKit();
@@ -99,10 +100,17 @@ void main() {
       },
     });
     track = stream.getVideoTracks().first;
+    // A track with no consumer never reaches the native processor (T14.4),
+    // so bind a renderer to make the attach/effect assertions meaningful.
+    renderer = RTCVideoRenderer();
+    await renderer.initialize();
+    renderer.srcObject = stream;
   });
 
   tearDown(() async {
     await kit.dispose();
+    renderer.srcObject = null;
+    await renderer.dispose();
     for (final t in stream.getTracks()) {
       t.stop();
     }

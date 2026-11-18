@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
@@ -14,7 +15,13 @@ import 'package:mi_virtual_background_kit_livekit/mi_virtual_background_kit_live
 /// Needs the LiveKit dev server (Docker container `t131-lk` is enough):
 ///   docker start t131-lk
 ///   tool/preview_handoff_test.sh DEVICE_ID
-const _url = 'ws://127.0.0.1:7880';
+///
+/// Android uses `adb reverse`, so the default URL is localhost. On a physical
+/// iOS device pass the host IP: `LK_URL=ws://192.168.1.5:7880` (script/T17.5).
+const _url = String.fromEnvironment(
+  'LK_URL',
+  defaultValue: 'ws://127.0.0.1:7880',
+);
 const _apiKey = 'devkey';
 const _apiSecret = 'secret';
 const _roomName = 'demo';
@@ -41,6 +48,30 @@ String _devToken() {
     utf8.encode(_apiSecret),
   ).convert(utf8.encode('$header.$payload'));
   return '$header.$payload.${base64Url.encode(digest.bytes).replaceAll('=', '')}';
+}
+
+/// iOS shows the Local Network dialog on the first local connection and fails
+/// that in-flight socket. `flutter test` reinstalls the app each run, so the
+/// dialog (and the failed first attempt) must be absorbed before Room.connect.
+Future<void> _ensureLocalNetwork(String host, int port) async {
+  for (var attempt = 1; attempt <= 12; attempt++) {
+    try {
+      final socket = await Socket.connect(
+        host,
+        port,
+        timeout: const Duration(seconds: 2),
+      );
+      socket.destroy();
+      debugPrint('T163| LOCAL_NETWORK ok attempt=$attempt');
+      return;
+    } on SocketException catch (e) {
+      debugPrint(
+        'T163| LOCAL_NETWORK wait attempt=$attempt '
+        'errno=${e.osError?.errorCode}',
+      );
+      await Future<void>.delayed(const Duration(seconds: 2));
+    }
+  }
 }
 
 Future<PreviewHandoff> _startPreview(WidgetTester tester) async {
@@ -74,6 +105,9 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('handoff keeps the effect on both call paths', (tester) async {
+    final endpoint = Uri.parse(_url);
+    await _ensureLocalNetwork(endpoint.host, endpoint.port);
+
     // Path A — handoff straight into flutter_webrtc rendering.
     final a = await _startPreview(tester);
     final renderer = RTCVideoRenderer();
@@ -99,9 +133,12 @@ void main() {
     final adapter = LiveKitVirtualBackground(room: room);
     try {
       await room.connect(_url, _devToken());
+      debugPrint('T163| CONNECT ok $_url');
       await adapter.attach(local);
+      debugPrint('T163| ATTACH ok');
       await adapter.setEffect(const ColorEffect(Color(0xFF00E5CC)));
       await room.localParticipant!.publishVideoTrack(local);
+      debugPrint('T163| PUBLISH ok');
       await tester.pumpWidget(
         MaterialApp(
           home: VideoTrackRenderer(
@@ -115,7 +152,13 @@ void main() {
       debugPrint('T163| PATH_B published=${local.mediaStreamTrack.id}');
     } finally {
       await adapter.dispose();
-      await room.disconnect();
+      // A failed connect can make disconnect() time out; never let cleanup
+      // mask the original error from connect/attach/publish.
+      try {
+        await room.disconnect();
+      } catch (e) {
+        debugPrint('T163| DISCONNECT_ERROR $e');
+      }
       room.dispose();
       await _release(b);
       await tester.pumpWidget(const MaterialApp(home: SizedBox.expand()));
