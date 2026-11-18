@@ -10,10 +10,14 @@ final class BackgroundMetrics {
   ///   milliseconds; null until the first inference completes.
   /// - [maskAgeMs]: age of the person mask currently composited, in
   ///   milliseconds; null until the first mask is uploaded.
+  /// - [processorLatencyMs]: time from frame arrival at the native processor
+  ///   to the composited frame returned to WebRTC; null until the first
+  ///   composited frame. Excludes camera sensor and screen display time.
   const BackgroundMetrics({
     required this.outputFps,
     this.segmentationLatencyMs,
     this.maskAgeMs,
+    this.processorLatencyMs,
   });
 
   /// Output frame rate over the last reporting window (about 1 s).
@@ -25,12 +29,18 @@ final class BackgroundMetrics {
   /// Age of the composited person mask in milliseconds, if known.
   final double? maskAgeMs;
 
+  /// Frame arrival to composited output inside the native processor.
+  ///
+  /// Excludes camera sensor readout and screen display time.
+  final double? processorLatencyMs;
+
   /// Deserializes a metrics sample from a native map.
   factory BackgroundMetrics.fromMap(Map<dynamic, dynamic> map) {
     return BackgroundMetrics(
       outputFps: (map['outputFps'] as num?)?.toDouble() ?? 0.0,
       segmentationLatencyMs: (map['segmentationLatencyMs'] as num?)?.toDouble(),
       maskAgeMs: (map['maskAgeMs'] as num?)?.toDouble(),
+      processorLatencyMs: (map['processorLatencyMs'] as num?)?.toDouble(),
     );
   }
 
@@ -40,6 +50,8 @@ final class BackgroundMetrics {
         if (segmentationLatencyMs != null)
           'segmentationLatencyMs': segmentationLatencyMs,
         if (maskAgeMs != null) 'maskAgeMs': maskAgeMs,
+        if (processorLatencyMs != null)
+          'processorLatencyMs': processorLatencyMs,
       };
 
   @override
@@ -49,13 +61,19 @@ final class BackgroundMetrics {
           runtimeType == other.runtimeType &&
           outputFps == other.outputFps &&
           segmentationLatencyMs == other.segmentationLatencyMs &&
-          maskAgeMs == other.maskAgeMs;
+          maskAgeMs == other.maskAgeMs &&
+          processorLatencyMs == other.processorLatencyMs;
 
   @override
-  int get hashCode => Object.hash(outputFps, segmentationLatencyMs, maskAgeMs);
+  int get hashCode => Object.hash(
+        outputFps,
+        segmentationLatencyMs,
+        maskAgeMs,
+        processorLatencyMs,
+      );
 
   @override
   String toString() =>
       'BackgroundMetrics(fps: $outputFps, seg: $segmentationLatencyMs ms, '
-      'maskAge: $maskAgeMs ms)';
+      'maskAge: $maskAgeMs ms, processor: $processorLatencyMs ms)';
 }

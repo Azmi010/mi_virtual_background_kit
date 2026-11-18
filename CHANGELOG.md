@@ -35,6 +35,10 @@ mempertahankan perilaku versi sebelumnya. Rincian: ADR 0002 butir 9.
   aktif. Pelaporan dipedulikan hanya selama ada pendengar — tanpa pendengar
   native tidak membangun payload dan tidak mengirim apa pun; semua data tetap
   di perangkat.
+* `BackgroundMetrics.processorLatencyMs` (opsional): durasi frame tiba di
+  processor native hingga frame hasil komposit dikembalikan ke WebRTC. Field
+  baru ini bernilai `null` sampai frame komposit pertama dan tidak mengubah
+  kode konsumen yang sudah ada.
 * Model segmentasi Android berganti default ke `selfie_segmenter_landscape`: 
   latensi inferensi turun ±34% pada perangkat kelas
   rendah dengan kualitas mask setara, sehingga mask lebih segar tanpa

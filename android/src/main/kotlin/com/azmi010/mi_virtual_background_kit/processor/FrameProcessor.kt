@@ -100,6 +100,10 @@ class FrameProcessor(
     @Volatile
     private var lastMaskUploadNs: Long = 0L
 
+    /** T17.3: last frame-arrival to composited-output duration, ms. */
+    @Volatile
+    private var lastProcessorLatencyMs: Double = -1.0
+
     private val segmentExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val isSegmenting = AtomicBoolean(false)
 
@@ -361,6 +365,7 @@ class FrameProcessor(
 
         val buffer = frame.buffer as? VideoFrame.TextureBuffer
         val currentTimestamp = if (frame.timestampNs > 0) frame.timestampNs else System.nanoTime()
+        val entryNs = System.nanoTime()
 
         // FR-12/FR-21: monitor fps while an effect is active, or while a
         // stage-2 fallback watches for auto-recovery.
@@ -547,6 +552,8 @@ class FrameProcessor(
                     is EffectState.Image -> compositor.composeImage(frame, effect.fit)
                 }
                 if (composited != null) {
+                    lastProcessorLatencyMs =
+                        (System.nanoTime() - entryNs) / 1_000_000.0
                     lastCompositedTimestampNs = currentTimestamp
                     if (awaitingActiveAfterResume) {
                         awaitingActiveAfterResume = false
@@ -793,6 +800,10 @@ class FrameProcessor(
         val uploadedNs = lastMaskUploadNs
         if (uploadedNs > 0L) {
             payload["maskAgeMs"] = (System.nanoTime() - uploadedNs) / 1_000_000.0
+        }
+        val processorLatency = lastProcessorLatencyMs
+        if (processorLatency >= 0.0) {
+            payload["processorLatencyMs"] = processorLatency
         }
         emit(payload)
     }

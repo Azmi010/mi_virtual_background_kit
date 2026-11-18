@@ -11,9 +11,11 @@ void main() {
         outputFps: 29.5,
         segmentationLatencyMs: 12.0,
         maskAgeMs: 83.3,
+        processorLatencyMs: 4.2,
       );
       final restored = BackgroundMetrics.fromMap(m.toMap());
       expect(restored, m);
+      expect(restored.processorLatencyMs, 4.2);
     });
 
     test('fromMap tolerates missing optional fields', () {
@@ -21,6 +23,7 @@ void main() {
       expect(m.outputFps, 30.0);
       expect(m.segmentationLatencyMs, isNull);
       expect(m.maskAgeMs, isNull);
+      expect(m.processorLatencyMs, isNull);
     });
 
     test('fromMap defaults outputFps to 0 when absent', () {

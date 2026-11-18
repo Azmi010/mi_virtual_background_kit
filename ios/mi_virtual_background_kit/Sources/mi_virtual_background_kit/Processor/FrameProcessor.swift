@@ -72,6 +72,8 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
     private var metricsEmitNs: Int64 = 0
     private var metricsEmitFrames = 0
     private var lastMaskUploadNs: Int64 = 0
+    // T17.3: frame-arrival to composited-output duration (guarded by `lock`).
+    private var lastProcessorLatencyMs: Double = -1
     public internal(set) var adaptiveSegmentInterval: Int = 1
     public private(set) var isFallbackDisabled: Bool = false
 
@@ -304,6 +306,7 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         lock.unlock()
 
         let currentTimestamp = frame.timeStampNs > 0 ? frame.timeStampNs : Int64(Date().timeIntervalSince1970 * 1_000_000_000)
+        let entryTicks = DispatchTime.now().uptimeNanoseconds
 
         // FR-12/FR-21: monitor fps while an effect is active, or while a
         // stage-2 fallback watches for auto-recovery.
@@ -391,7 +394,10 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
                 composed = compositor.composeImage(frame: frame, fit: fit)
             }
             if let output = composed {
+                let elapsedTicks = DispatchTime.now().uptimeNanoseconds - entryTicks
+                let processorLatencyMs = Double(elapsedTicks) / 1_000_000.0
                 lock.lock()
+                lastProcessorLatencyMs = processorLatencyMs
                 lastCompositedTimestampNs = currentTimestamp
                 let fireActive = awaitingActiveAfterResume
                 awaitingActiveAfterResume = false
@@ -532,6 +538,7 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         metricsEmitFrames = frames
         let inference = lastInferenceMs
         let uploadedNs = lastMaskUploadNs
+        let processorLatency = lastProcessorLatencyMs
         lock.unlock()
 
         var payload: [String: Any] = ["outputFps": fps]
@@ -541,6 +548,9 @@ public class FrameProcessor: NSObject, ExternalVideoProcessingDelegate {
         if uploadedNs > 0 {
             let nowNs = Int64(Date().timeIntervalSince1970 * 1_000_000_000)
             payload["maskAgeMs"] = Double(nowNs - uploadedNs) / 1_000_000.0
+        }
+        if processorLatency >= 0 {
+            payload["processorLatencyMs"] = processorLatency
         }
         emit(payload)
     }
