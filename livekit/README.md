@@ -54,4 +54,7 @@ dependency, stays in
 
 ## License
 
-MIT — see [LICENSE](https://github.com/Azmi010/mi_virtual_background_kit/blob/main/LICENSE).
+Adapter code: MIT — see [LICENSE](https://github.com/Azmi010/mi_virtual_background_kit/blob/main/LICENSE).
+Dependencies: `mi_virtual_background_kit` (MIT) and `livekit_client`
+(Apache-2.0). Core dependencies and their licenses are listed in the
+[core README](https://github.com/Azmi010/mi_virtual_background_kit#license).

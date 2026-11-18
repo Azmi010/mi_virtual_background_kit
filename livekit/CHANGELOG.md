@@ -1,4 +1,4 @@
-## 0.2.0 (belum dirilis)
+## 0.2.0
 
 * `LiveKitVirtualBackground` wraps the core kit: `attach` to a LiveKit
   `LocalVideoTrack`, `setEffect`, `detach`, and `dispose`.

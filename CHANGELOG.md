@@ -6,7 +6,7 @@ diizinkan pada versi **minor** dan entri CHANGELOG-nya diawali **Breaking:**.
 Field baru `BackgroundQuality` bukan breaking selama punya nilai bawaan yang
 mempertahankan perilaku versi sebelumnya. Rincian: ADR 0002 butir 9.
 
-## 0.2.0 (belum dirilis)
+## 0.2.0
 
 * Preview controller `VirtualBackgroundPreviewController` (FR-17/FR-18):
   `start`, `stop`, `setEffect`, `switchCamera`, `releaseToCaller`, dan `dispose`
