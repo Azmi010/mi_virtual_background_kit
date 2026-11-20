@@ -56,8 +56,10 @@ await kit.attach(track);
 
 The bundled `selfie_segmenter.tflite` (250 KB) did not load. Usual causes:
 a custom build stripped plugin resources, a split APK is missing the asset
-arm, or ProGuard removed a MediaPipe class. A plain `flutter build apk`/`ipa`
-is fine; check your shrinking config if you changed it.
+arm, or R8 removed a MediaPipe class. Since 0.2 the package ships
+`consumer-rules.pro`, so a plain release build with minify enabled should work.
+If your app forces R8 full mode (`android.enableR8.fullMode=true`), set it to
+`false` as a fallback and check `usage.txt` before adding your own keep rules.
 
 ## 8. Background image does not show (`invalidImage` or nothing)
 

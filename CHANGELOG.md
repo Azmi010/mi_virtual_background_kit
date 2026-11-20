@@ -1,48 +1,55 @@
-## Catatan kebijakan 0.x
+## 0.x policy note
 
-Selama versi 0.x, perubahan yang memecah kode konsumen (subclass baru pada
-`sealed class VirtualBackgroundEffect`, kode error baru pada `BackgroundException`)
-diizinkan pada versi **minor** dan entri CHANGELOG-nya diawali **Breaking:**.
-Field baru `BackgroundQuality` bukan breaking selama punya nilai bawaan yang
-mempertahankan perilaku versi sebelumnya. Rincian: ADR 0002 butir 9.
+During 0.x, changes that break consumer code (a new subclass of
+`sealed class VirtualBackgroundEffect`, a new error code on
+`BackgroundException`) are allowed in a **minor** release and the changelog
+entry starts with **Breaking:**. New `BackgroundQuality` fields are non-breaking
+as long as they have defaults that preserve the previous behavior. See ADR 0002 §9.
+
+## 0.2.1
+
+* Android: ship `consumer-rules.pro` so apps with R8/minify keep the plugin,
+  MediaPipe framework classes, protobuf messages, flogger, and datatransport.
+  Apps no longer need to copy these rules into their own `proguard-rules.pro`
+  (issue #2).
 
 ## 0.2.0
 
 * Preview controller `VirtualBackgroundPreviewController` (FR-17/FR-18):
-  `start`, `stop`, `setEffect`, `switchCamera`, `releaseToCaller`, dan `dispose`
-  idempoten. `releaseToCaller` menyerahkan stream, track, dan kit ke pemanggil
-  tanpa menghentikan kamera atau melepas efek.
-* Widget `VirtualBackgroundPreview` merender stream controller lewat renderer
-  `flutter_webrtc`, dengan `mirror` dan `fit` (`cover`/`contain`). Gagal start
-  atau izin kamera ditolak tampil sebagai pesan error + tombol retry, bukan crash.
-* **Breaking:** minimum SDK naik ke Dart 3.6.0 dan Flutter 3.27.0 (syarat pub
-  workspace untuk paket adapter LiveKit).
-* **Breaking:** enum `FallbackAction` bertambah nilai `recovered` —
-  `switch` eksaustif atas `FallbackAction` di kode konsumen perlu satu cabang
-  baru (kebijakan ADR 0002 butir 9: minor + catatan Breaking).
-* Fallback recovery: API baru `MiVirtualBackgroundKit.resumeEffect()`
-  menyalakan kembali efek terakhir setelah fallback tahap 2 mematikannya, dan
-  opsi `BackgroundQuality.autoRecovery` (bawaan `false`) memulihkan efek serta
-  kualitas segmentasi yang terdegradasi secara otomatis setelah fps stabil,
-  memancarkan event `FallbackAction.recovered`. Pemulihan otomatis bersifat
-  satu-kali per intervensi manual (latch) agar perangkat lambat tidak
-  berfluktuasi antara aktif/nonaktif.
-* `attach()` tanpa parameter `quality` kini memakai konfigurasi quality
-  terakhir (kamera switch tidak lagi mengembalikan `BackgroundQuality` ke
-  default, termasuk flag `autoRecovery`).
-* `metricsStream`: lokal `BackgroundMetrics` (fps keluaran, latensi
-  segmentasi terakhir, usia mask) dipancarkan sekitar per detik selama efek
-  aktif. Pelaporan dipedulikan hanya selama ada pendengar — tanpa pendengar
-  native tidak membangun payload dan tidak mengirim apa pun; semua data tetap
-  di perangkat.
-* `BackgroundMetrics.processorLatencyMs` (opsional): durasi frame tiba di
-  processor native hingga frame hasil komposit dikembalikan ke WebRTC. Field
-  baru ini bernilai `null` sampai frame komposit pertama dan tidak mengubah
-  kode konsumen yang sudah ada.
-* Model segmentasi Android berganti default ke `selfie_segmenter_landscape`: 
-  latensi inferensi turun ±34% pada perangkat kelas
-  rendah dengan kualitas mask setara, sehingga mask lebih segar tanpa
-  penurunan fps. `segmentationWidth` default tetap 256.
+  `start`, `stop`, `setEffect`, `switchCamera`, `releaseToCaller`, and `dispose`
+  are idempotent. `releaseToCaller` hands the stream, track, and kit to the
+  caller without stopping the camera or removing the effect.
+* `VirtualBackgroundPreview` widget renders the controller's stream through
+  the `flutter_webrtc` renderer, with `mirror` and `fit` (`cover`/`contain`).
+  Failed start or denied camera permission appears as an error message plus a
+  retry button, not a crash.
+* **Breaking:** minimum SDK raised to Dart 3.6.0 and Flutter 3.27.0 (required
+  by the pub workspace for the LiveKit adapter package).
+* **Breaking:** `FallbackAction` gains the `recovered` value — exhaustive
+  `switch` statements over `FallbackAction` in consumer code need a new branch
+  (ADR 0002 §9 policy: minor release plus a Breaking note).
+* Fallback recovery: new `MiVirtualBackgroundKit.resumeEffect()` re-enables the
+  last effect after stage-2 fallback disabled it, and
+  `BackgroundQuality.autoRecovery` (default `false`) restores the effect and
+  degraded segmentation quality automatically after fps stabilizes, emitting
+  `FallbackAction.recovered`. Automatic recovery is one-shot per manual
+  intervention (latch) so slow devices do not oscillate between active and
+  inactive.
+* `attach()` without a `quality` argument now uses the last quality
+  configuration (camera switch no longer resets `BackgroundQuality` to
+  defaults, including the `autoRecovery` flag).
+* `metricsStream`: local `BackgroundMetrics` (output fps, last segmentation
+  latency, mask age) emitted about once per second while an effect is active.
+  Reporting is handled only while there are listeners — without listeners
+  native builds no payload and sends nothing; all data stays on the device.
+* `BackgroundMetrics.processorLatencyMs` (optional): duration from frame
+  arrival at the native processor to the composited frame returned to WebRTC.
+  The new field is `null` until the first composited frame and does not change
+  existing consumer code.
+* Android segmentation model default changed to `selfie_segmenter_landscape`:
+  inference latency drops about 34% on low-end devices with comparable mask
+  quality, so masks are fresher without fps regression. The default
+  `segmentationWidth` remains 256.
 
 ## 0.1.1
 
