@@ -1,70 +1,70 @@
-# Test Matrix — Fase 6
+# Test Matrix — Phase 6
 
-Referensi: [PRD.md](PRD.md) §7, [TASKS.md](TASKS.md) T6.1.  
-Status: daftar siap, hasil diisi saat eksekusi T6.2–T6.5.
+Reference: [PRD.md](PRD.md) §7, [TASKS.md](TASKS.md) T6.1.  
+Status: list ready, results filled in during execution of T6.2–T6.5.
 
-## 1. Perangkat
+## 1. Devices
 
-PRD meminta minimal tiga kelas perangkat per platform (low, mid, high).
-Akses hardware terbatas — hanya dua perangkat fisik yang tersedia.
-Kelas mid tidak diukur. Angka benchmark resmi hanya dari dua baris di bawah.
-Emulator tidak dipakai (GPU/segmentasi tidak representatif).
+PRD requires at least three device classes per platform (low, mid, high).
+Hardware access is limited — only two physical devices are available.
+The mid class is not measured. Official benchmark figures come only from the two rows below.
+Emulators are not used (GPU/segmentation not representative).
 
-| ID | Platform | Kelas | Perangkat / identitas | Koneksi | Peran |
-|----|----------|-------|------------------------|----------|-------|
-| A1 | Android | low | Serial `RR8T601FP0R` | USB (`adb`) | Benchmark resmi, integration test, soak, fallback |
-| I1 | iOS | high | UDID `00008120-0016195A0CC20032` (iPhone 15) | Wireless (Xcode network) | Benchmark resmi, integration test, soak, fallback |
+| ID | Platform | Class | Device / identity | Connection | Role |
+|----|----------|-------|-------------------|------------|------|
+| A1 | Android | low | Serial `RR8T601FP0R` | USB (`adb`) | Official benchmark, integration test, soak, fallback |
+| I1 | iOS | high | UDID `00008120-0016195A0CC20032` (iPhone 15) | Wireless (Xcode network) | Official benchmark, integration test, soak, fallback |
 
-Identitas model lengkap (manufacturer/model SDK) diisi dari `adb shell getprop` / Xcode saat sesi pertama.
+Full model identity (manufacturer/model SDK) filled in from `adb shell getprop` / Xcode during the first session.
 
-## 2. Skenario
+## 2. Scenarios
 
-Legend hasil: `pass` · `fail` · `n/a` · kosong = belum dijalankan.
+Result legend: `pass` · `fail` · `n/a` · empty = not yet run.
 
-| # | Skenario | FR | A1 | I1 | Catatan / bukti |
-|---|----------|----|----|----|-----------------|
-| S1 | `isSupported()` benar di device didukung | FR-13 | | | |
-| S2 | `attach` ke track kamera lokal | FR-06 | | | Preview hidup |
-| S3 | Efek blur (radius default + variasi) | FR-01 | | | Screenshot edge |
-| S4 | Efek gambar `cover` | FR-02 | | | Orientasi portrait + landscape |
-| S5 | Efek gambar `contain` | FR-02 | | | Letterbox benar |
-| S6 | Efek warna solid | FR-03 | | | |
+| # | Scenario | FR | A1 | I1 | Notes / evidence |
+|---|----------|----|----|----|------------------|
+| S1 | `isSupported()` true on supported device | FR-13 | | | |
+| S2 | `attach` to local camera track | FR-06 | | | Preview live |
+| S3 | Blur effect (default radius + variations) | FR-01 | | | Screenshot edge |
+| S4 | Image effect `cover` | FR-02 | | | Portrait + landscape orientation |
+| S5 | Image effect `contain` | FR-02 | | | Letterbox correct |
+| S6 | Solid color effect | FR-03 | | | |
 | S7 | `NoEffect` / bypass | FR-04 | | | |
-| S8 | Ganti efek saat runtime (blur→image→color→none→blur) | FR-05 | | | No kedip, track tidak restart |
-| S9 | Ganti kamera depan/belakang (re-attach), efek bertahan | FR-09 | | | |
-| S10 | Rotasi orientasi | FR-09 | | | |
+| S8 | Switch effects at runtime (blur→image→color→none→blur) | FR-05 | | | No flicker, track does not restart |
+| S9 | Switch front/back camera (re-attach), effect persists | FR-09 | | | |
+| S10 | Orientation rotation | FR-09 | | | |
 | S11 | App background → foreground | FR-09 | | | No false fallback |
-| S12 | `setQuality` / preset low-balanced-high berpengaruh | FR-11 | | | fps/kualitas terukur |
-| S13 | Fallback performa (turun kualitas / disable + event) | FR-12 | | | `fallbackStream` terima event |
+| S12 | `setQuality` / low-balanced-high preset takes effect | FR-11 | | | fps/quality measured |
+| S13 | Performance fallback (lower quality / disable + event) | FR-12 | | | `fallbackStream` receives event |
 | S14 | `statusStream` idle→initializing→active→error | FR-07 | | | |
-| S15 | Error typed: invalidTrack / invalidImage / modelLoadFailed | FR-08 | | | |
-| S16 | `detach` idempoten, kamera masih hidup untuk track asli | FR-06 | | | |
-| S17 | `dispose` bersih, kit tidak terpakai lagi | FR-10 | | | |
-| S18 | Loop attach/detach 100× tanpa leak/crash | FR-10 | pass | pass | T6.5 |
-| S19 | Soak 30 menit: no crash, memori stabil | — | pass | pass | T6.5 |
-| S20 | Benchmark 10 menit per efek: fps, latensi, CPU, mem, baterai | §7 | | | T6.2 → `doc/benchmark.md` |
+| S15 | Typed error: invalidTrack / invalidImage / modelLoadFailed | FR-08 | | | |
+| S16 | `detach` idempotent, camera still live for original track | FR-06 | | | |
+| S17 | `dispose` clean, kit no longer in use | FR-10 | | | |
+| S18 | attach/detach loop 100× without leak/crash | FR-10 | pass | pass | T6.5 |
+| S19 | Soak 30 minutes: no crash, memory stable | — | pass | pass | T6.5 |
+| S20 | Benchmark 10 minutes per effect: fps, latency, CPU, mem, battery | §7 | | | T6.2 → `doc/benchmark.md` |
 
-## 3. Cakupan vs PRD
+## 3. Coverage vs PRD
 
-| PRD kelas | Tersedia? | Keterangan |
-|-----------|-----------|------------|
-| Android low | Ya (A1) | |
-| Android mid | **Tidak** | Tidak ada hardware |
-| Android high | **Tidak** | Tidak ada hardware |
-| iOS high | Ya (I1) | |
-| iOS low/mid | **Tidak** | Tidak ada hardware |
+| PRD class | Available? | Notes |
+|-----------|------------|-------|
+| Android low | Yes (A1) | |
+| Android mid | **No** | No hardware |
+| Android high | **No** | No hardware |
+| iOS high | Yes (I1) | |
+| iOS low/mid | **No** | No hardware |
 
-Konsekuensi: klaim performa di README/Batasan hanya boleh menyebut dua device di atas;
-target "3 kelas perangkat" (metrik keberhasilan §12) **tidak terpenuhi di v0.1 dan v0.2**
-(hardware mid tidak tersedia — keputusan 10 Nov 2026, T12.3), dicatat sebagai batasan,
-bukan disamarkan.
+Consequence: performance claims in README/Limitations may only mention the two devices above;
+target "3 device classes" (success metric §12) **not met in v0.1 and v0.2**
+(mid hardware unavailable — decision 10 Nov 2026, T12.3), recorded as a limitation,
+not disguised.
 
-## 4. Pelaksanaan
+## 4. Execution
 
-| Bagian | Pelaksana |
-|-------|-----------|
-| Sambung device, setup scene (foto/tablet orang), tekan start, verifikasi visual | Human |
-| Script benchmark/soak, dump `adb`/log, jalankan integration test, olah hasil ke tabel/docs | Assistant |
+| Part | Executor |
+|------|----------|
+| Connect device, set up scene (photo/tablet of person), press start, verify visually | Human |
+| Script benchmark/soak, dump `adb`/log, run integration test, process results into tables/docs | Assistant |
 
-Skenario visual (S3–S8, tepi & flicker): human ~2–3 menit per device.  
-Sisanya bisa otomatis saat device menyala.
+Visual scenarios (S3–S8, edges & flicker): human ~2–3 minutes per device.  
+The rest can be automated while the device is powered on.

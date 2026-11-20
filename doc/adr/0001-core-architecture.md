@@ -1,87 +1,87 @@
-# ADR 0001 — Arsitektur inti mi_virtual_background_kit
+# ADR 0001 — Core architecture of mi_virtual_background_kit
 
-Status: Accepted (untuk review)
-Tanggal: 24 Oktober 2026
-Milestone: M0 — spike dan keputusan teknologi
-Angka pendukung: [doc/spike-results.md](../spike-results.md)
+Status: Accepted (for review)
+Date: 24 October 2026
+Milestone: M0 — spike and technology decisions
+Supporting figures: [doc/spike-results.md](../spike-results.md)
 
-## Konteks
+## Context
 
-Package menerapkan efek latar belakang virtual (blur, gambar, warna solid) pada track
-kamera lokal `flutter_webrtc`, on-device penuh, Android + iOS, API Dart hanya control
-plane — frame tidak melewati Dart.
+The package implements virtual background effects (blur, image, solid color) on the local
+camera track of `flutter_webrtc`, fully on-device, Android + iOS, with the Dart API on the control
+plane only — frames do not pass through Dart.
 
-Perangkat spike (track ini):
+Spike devices (this track):
 
-| Perangkat | ABI | OS | Peran |
+| Device | ABI | OS | Role |
 |---|---|---|---|
-| Samsung SM-A135F | `armeabi-v7a` (32-bit saja) | Android 14 (API 34) | Fisik, low-end, device utama |
-| iPhone 15 | arm64 | iOS 26.5 | Fisik, hook iOS |
-| Emulator `sdk_gphone16k_arm64` | `arm64-v8a` | Android 17 (API 37) | Pembanding latency saja (GL software) |
+| Samsung SM-A135F | `armeabi-v7a` (32-bit only) | Android 14 (API 34) | Physical, low-end, main device |
+| iPhone 15 | arm64 | iOS 26.5 | Physical, iOS hook |
+| Emulator `sdk_gphone16k_arm64` | `arm64-v8a` | Android 17 (API 37) | Latency comparison only (software GL) |
 
-Kode spike ada di `android/.../spike/`, `ios/.../MiVirtualBackgroundKitPlugin.swift`, dan
-`example/` — dihapus sebelum rilis.
+Spike code is in `android/.../spike/`, `ios/.../MiVirtualBackgroundKitPlugin.swift`, and
+`example/` — removed before release.
 
-## Keputusan
+## Decisions
 
-### 1. Titik hook frame: API frame processor bawaan flutter_webrtc
+### 1. Frame hook point: built-in frame processor API of flutter_webrtc
 
-Tanpa fork. Plugin memakai API native yang sudah ada dan terbukti dipakai `livekit_client`
-dalam produksi:
+No fork. The plugin uses the existing native API already proven to be used by `livekit_client`
+in production:
 
 - **Android** — `FlutterWebRTCPlugin.sharedSingleton.getLocalTrack(trackId)` →
-  `LocalVideoTrack.addProcessor(ExternalVideoFrameProcessing.onFrame)`. Frame diproses di
-  capture thread sebelum ke sink.
+  `LocalVideoTrack.addProcessor(ExternalVideoFrameProcessing.onFrame)`. Frame is processed on the
+  capture thread before reaching the sink.
 - **iOS** — `FlutterWebRTCPlugin.sharedSingleton().localTracks[trackId]` →
   `LocalVideoTrack.addProcessing(_:)` (`ExternalVideoProcessingDelegate.onFrame`).
 
-Verifikasi live: Android `attach=true`, 30 fps stabil, toggle on/off terlihat di preview;
-iOS `attach=true`, 30 fps stabil, transform terverifikasi visual di device fisik.
+Live verification: Android `attach=true`, stable 30 fps, on/off toggle visible in preview;
+iOS `attach=true`, stable 30 fps, transform visually verified on physical device.
 
-Aturan wajib yang terbukti dari desain API ini:
+Mandatory rules proven by this API design:
 
-- Cache objek `LocalVideoTrack` saat attach; **jangan** lookup ulang by ID — panggilan
-  Dart `stream.getMediaTracks()` menimpa map `localTracks` dengan objek baru yang tidak
-  terpasang sebagai processor (silent no-op).
-- Dokumentasikan ini sebagai kontrak internal di kode fase implementasi.
+- Cache the `LocalVideoTrack` object on attach; **do not** look it up again by ID — the Dart
+  call `stream.getMediaTracks()` overwrites the `localTracks` map with new objects that are not
+  attached as processors (silent no-op).
+- Document this as an internal contract in the implementation phase code.
 
-### 2. Format frame: GPU texture di kedua platform
+### 2. Frame format: GPU texture on both platforms
 
-- Android: `TextureBufferImpl` tipe `OES`, rotasi 270, 480x640 pada request 640x480.
-- iOS: `RTCCVPixelBuffer` (CVPixelBuffer), rotasi 90, 640x480; format piksel
-  (BGRA vs YCbCr biplanar) **dideteksi runtime** — asumsi statis terbukti salah pada
-  spike pertama (hasil: garis, bukan geser warna).
+- Android: `TextureBufferImpl` of type `OES`, rotation 270, 480x640 on a 640x480 request.
+- iOS: `RTCCVPixelBuffer` (CVPixelBuffer), rotation 90, 640x480; pixel format
+  (BGRA vs YCbCr biplanar) is **detected at runtime** — a static assumption proved wrong in the
+  first spike (result: lines, not color shifting).
 
-Konsekuensi: pipeline komposit tetap di GPU; transform berbasis akses byte CPU pada
-buffer Android tidak bekerja (bukan I420 CPU).
+Consequence: the compositing pipeline stays on the GPU; transforms based on CPU byte access on the
+Android buffer do not work (not CPU I420).
 
-### 3. Mesin segmentasi: MediaPipe Image Segmenter
+### 3. Segmentation engine: MediaPipe Image Segmenter
 
-Dibandingkan head-to-head di dua perangkat (angka lengkap di spike-results T0.6):
+Compared head-to-head on two devices (full figures in spike-results T0.6):
 
-| Kriteria | MediaPipe (`tasks-vision` 0.10.20 + `selfie_segmenter.tflite`) | ML Kit (`segmentation-selfie` 16.0.0-beta6) |
+| Criterion | MediaPipe (`tasks-vision` 0.10.20 + `selfie_segmenter.tflite`) | ML Kit (`segmentation-selfie` 16.0.0-beta6) |
 |---|---|---|
-| Latensi P1 @640 (median) | 179 ms | **111 ms** (lebih cepat di device ini) |
-| Resolusi mask | = resolusi input (256/640/…) | **fixed 256x256** (model baked) |
-| Akurasi tepi (overlay) | detail rambut halus @640 | rapi tapi kasar (256) |
-| Lisensi | **Apache-2.0** | **ML Kit Terms of Service** (bukan open-source) |
-| Ukuran | AAR 18,8 MB + model asset 250 KB | tree ≈ 24,2 MB (model 249 KB bundled) |
-| Dependensi privasi | `datatransport` ikut terpasang (belum dinonaktifkan — lihat Risiko) | `datatransport` + `firebase-encoders` + `play-services` |
+| P1 latency @640 (median) | 179 ms | **111 ms** (faster on this device) |
+| Mask resolution | = input resolution (256/640/…) | **fixed 256x256** (model baked) |
+| Edge accuracy (overlay) | fine hair detail @640 | neat but coarse (256) |
+| License | **Apache-2.0** | **ML Kit Terms of Service** (not open-source) |
+| Size | AAR 18,8 MB + 250 KB model asset | tree ≈ 24,2 MB (249 KB model bundled) |
+| Privacy dependency | `datatransport` installed as well (not yet disabled — see Risks) | `datatransport` + `firebase-encoders` + `play-services` |
 
-**Diputuskan: MediaPipe.** Alasan penentu: lisensi Apache-2-0 kompatibel redistribusi
-paket MIT (ML Kit ToS tidak), struktur dependensi lebih bersih untuk PRD G4, dan mask
-resolusi-independen (ML Kit terkunci 256). Keunggulan latensi ML Kit di P1 dicatat apa
-adanya dan tidak mengubah keputusan.
+**Decided: MediaPipe.** Deciding reasons: the Apache-2-0 license is compatible with redistribution
+of the MIT package (ML Kit ToS is not), a cleaner dependency structure for PRD G4, and a
+resolution-independent mask (ML Kit is locked to 256). ML Kit's latency advantage on P1 is noted as
+is and does not change the decision.
 
-Fakta encoding yang wajib diketahui implementasi: category mask UINT8 dengan
-**person=0, background=255** (terbukti histogram) — predicate `!= 0` = terbalik.
+Encoding fact the implementation must know: UINT8 category mask with
+**person=0, background=255** (proven by histogram) — predicate `!= 0` = inverted.
 
-Model: `selfie_segmenter.tflite` 249.537 byte, **di-bundle sebagai asset** (tanpa
-unduhan runtime), delegate CPU.
+Model: `selfie_segmenter.tflite` 249.537 bytes, **bundled as an asset** (without
+runtime download), CPU delegate.
 
-### 4. Metode komposit: GPU (wajib)
+### 4. Compositing method: GPU (mandatory)
 
-Hasil T0.7 di P1:
+T0.7 results on P1:
 
 | | 640x480 | 1280x720 |
 |---|---|---|
@@ -89,70 +89,70 @@ Hasil T0.7 di P1:
 | CPU blur (readback + Java) | 76 ms ≈ 13 fps | 253 ms ≈ 4 fps |
 | CPU image | 36 ms ≈ 28 fps | 133 ms ≈ 7,5 fps |
 
-Jalur CPU belum termasuk upload texture dan sudah di luar budget 33 ms di kedua
-resolusi. Komposit GLES2 dijalankan di capture thread (satu-satunya thread dengan EGL
-context yang benar).
+The CPU path does not yet include texture upload and is already outside the 33 ms budget at both
+resolutions. GLES2 compositing runs on the capture thread (the only thread with a correct EGL
+context).
 
-Konsekuensi untuk segmentasi: readback per frame di P1 = 5,9 ms @640 / 42 ms @720 —
-ditambah latensi MediaPipe 179 ms @640, **segmentasi per-frame penuh tidak mungkin di
-kelas low-end 32-bit**. Arah desain: mask dihitung pada resolusi turun / frekuensi
-turun, komposit tetap per-frame dengan mask terakhir. Parameter ini masuk FR-11/FR-12
-(Fase 5) dan diuji ulang di perangkat kelas menengah (belum tersedia di spike ini).
+Consequence for segmentation: per-frame readback on P1 = 5,9 ms @640 / 42 ms @720 —
+plus MediaPipe latency of 179 ms @640, **full per-frame segmentation is impossible on the
+32-bit low-end class**. Design direction: compute the mask at lower resolution / lower
+frequency, keep compositing per-frame with the latest mask. These parameters go into FR-11/FR-12
+(Phase 5) and are retested on a mid-range device (not available in this spike).
 
 ### 5. Minimum OS
 
-- **Android `minSdk 24`** (sudah di `android/build.gradle.kts`; mengikuti kandidat PRD;
-  Camera2 tersedia sejak 21, MediaPipe tasks membutuhkan 24).
-- **iOS 13** (mengikuti `flutter_webrtc`; semua iPhone iOS-13 adalah arm64).
+- **Android `minSdk 24`** (already in `android/build.gradle.kts`; follows the PRD candidate;
+  Camera2 available since 21, MediaPipe tasks require 24).
+- **iOS 13** (follows `flutter_webrtc`; all iOS-13 iPhones are arm64).
 
-### 6. Rentang versi flutter_webrtc
+### 6. flutter_webrtc version range
 
-`flutter_webrtc: ^1.6.2`, teruji pada `1.6.2+hotfix.4` (kedua platform).
+`flutter_webrtc: ^1.6.2`, tested on `1.6.2+hotfix.4` (both platforms).
 
-Titik hook adalah API internal (bukan kontrak publik semver). Konsekuensi: rentang
-dipin ketat, uji batas bawah/atas di CI (T6.4), dan pesan error yang jelas bila API
-berubah. Bila versi berikutnya memutus hook, package harus membatasi rentang di
-`pubspec.yaml` sampai penyesuaian.
+The hook point is an internal API (not a public semver contract). Consequences: pin the range
+tightly, test the lower/upper bounds in CI (T6.4), and give a clear error message when the API
+changes. If a later version breaks the hook, the package must restrict the range in
+`pubspec.yaml` until adjusted.
 
-### 7. Format paket dan workaround build
+### 7. Package format and build workaround
 
-Satu plugin (folder `android/` + `ios/`), `Package.swift` dan `.podspec` keduanya
-disediakan (mengikuti `flutter_webrtc`; aplikasi pengguna bisa memakai SPM maupun
+One plugin (`android/` + `ios/` folders), both `Package.swift` and `.podspec` are
+provided (following `flutter_webrtc`; the user's app can use either SPM or
 CocoaPods).
 
-Catatan build: Flutter < 3.48 menyalin isi package plugin (termasuk `example/build`)
-rekursif via rsync saat build iOS SPM — repo memakai `tool/link_example_build.sh`
-(menautkan `example/build` ke luar repo) sampai fix upstream (flutter/flutter#188647,
-Flutter 3.48) tersedia.
+Build note: Flutter < 3.48 recursively copies plugin package contents (including `example/build`)
+via rsync during the iOS SPM build — the repo uses `tool/link_example_build.sh`
+(linking `example/build` outside the repo) until an upstream fix (flutter/flutter#188647,
+Flutter 3.48) is available.
 
-### 8. Lisensi
+### 8. License
 
-- Kode: **MIT** (file `LICENSE`).
-- Model segmentasi: **Apache-2.0** — kompatibel dengan redistribusi dalam paket MIT.
+- Code: **MIT** (`LICENSE` file).
+- Segmentation model: **Apache-2.0** — compatible with redistribution in the MIT package.
 
-## Alternatif yang ditolak
+## Rejected alternatives
 
-- **Fork/patch flutter_webrtc** — menolak: biaya maintenance; API processor bawaan
-  sudah terbukti cukup (pola sama dipakai LiveKit).
-- **Komposit CPU** — menolak: 76 ms/frame @640, 253 ms @720 (T0.7), mustahil 30 fps.
-- **ML Kit Selfie Segmentation** — menolak: lisensi ToS non-open-source, mask fixed
-  256, dependensi telemetri Google (T0.6). Latensi lebih cepat di P1 tidak
-  mengimbangi tiga hal itu.
-- **Akses byte CPU / `toI420()` sebagai jalur utama** — menolak: buffer Android GPU
-  OES, bukan I420 CPU; konversi readback mahal (5,9–42 ms).
-- **Unduh model saat runtime** — menolak: melanggar G4 dan menambah kegagalan offline;
-  model 250 KB cukup kecil untuk bundling.
+- **Fork/patch flutter_webrtc** — rejected: maintenance cost; the built-in processor API
+  is already proven sufficient (same pattern used by LiveKit).
+- **CPU compositing** — rejected: 76 ms/frame @640, 253 ms @720 (T0.7), 30 fps impossible.
+- **ML Kit Selfie Segmentation** — rejected: non-open-source ToS license, fixed 256
+  mask, Google telemetry dependency (T0.6). The faster latency on P1 does not
+  outweigh those three things.
+- **CPU byte access / `toI420()` as the main path** — rejected: the Android GPU buffer is
+  OES, not CPU I420; readback conversion is expensive (5,9–42 ms).
+- **Download the model at runtime** — rejected: violates G4 and adds offline failures;
+  the 250 KB model is small enough to bundle.
 
-## Risiko dan mitigasi
+## Risks and mitigation
 
-- **API hook internal flutter_webrtc** bisa berubah tanpa semver — pin `^1.6.2`, uji
-  batas versi di CI, error jelas saat attach gagal.
-- **`datatransport` masih aktif di classpath** (ikut MediaPipe). `disableTransportNetwork()`
-  di spike saat ini **hanya logging, belum menonaktifkan scheduler** — wajib diimplementasikan
-  sebelum rilis (Fase 3) dan diverifikasi tanpa panggilan jaringan.
-- **Perangkat 32-bit (P1) tidak real-time untuk segmentasi per-frame** — desain
-  fallback frekuensi/resolusi turun (FR-11/FR-12); kelas menengah belum diuji, angka
-  spike hanya mewakili low-end.
-- **Encoding mask MediaPipe person=0** berbeda konvensi umum — unit test overlay/compositing
-  wajib memverifikasi arah mask.
-- **Kebocoran resource** pada attach/detach berulang — diuji di T3.7/T6.5.
+- **Internal flutter_webrtc hook API** may change without semver — pin `^1.6.2`, test
+  version bounds in CI, clear error when attach fails.
+- **`datatransport` still active on the classpath** (comes with MediaPipe). `disableTransportNetwork()`
+  in the current spike **only logs, does not disable the scheduler** — must be implemented
+  before release (Phase 3) and verified with no network calls.
+- **32-bit device (P1) is not real-time for per-frame segmentation** — design a
+  lower-frequency/resolution fallback (FR-11/FR-12); mid-range class not yet tested, spike figures
+  represent low-end only.
+- **MediaPipe mask encoding person=0** differs from the common convention — overlay/compositing
+  unit tests must verify mask direction.
+- **Resource leak** on repeated attach/detach — tested in T3.7/T6.5.

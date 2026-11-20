@@ -1,257 +1,257 @@
-# Benchmark — Fase 6 (T6.2)
+# Benchmark — Phase 6 (T6.2)
 
-Tanggal: 2 November 2026  
-Protocol: sesi 10 menit per efek, effect default quality **Balanced**, radius blur 20, kamera depan 640×480 @30 fps.  
-Raw dump: `doc/bench-raw/` + logcat/`flutter run` (Android: `a1_*`, iOS: sesi di `/tmp/ios_*`).
+Date: 2 November 2026  
+Protocol: 10-minute session per effect, default effect quality **Balanced**, blur radius 20, front camera 640×480 @30 fps.  
+Raw dump: `doc/bench-raw/` + logcat/`flutter run` (Android: `a1_*`, iOS: sessions in `/tmp/ios_*`).
 
-## Perangkat
+## Devices
 
-| ID | Perangkat | OS | Koneksi | Catatan |
+| ID | Device | OS | Connection | Notes |
 |----|-----------|-----|---------|---------|
-| A1 | Samsung SM-A135F (`RR8T601FP0R`) | Android 14 (API 34) | USB | kelas low |
-| I1 | iPhone 15 (`00008120-0016195A0CC20032`, D37AP) | iOS 27.0.1 | USB (`flutter run`) | kelas high |
+| A1 | Samsung SM-A135F (`RR8T601FP0R`) | Android 14 (API 34) | USB | low class |
+| I1 | iPhone 15 (`00008120-0016195A0CC20032`, D37AP) | iOS 27.0.1 | USB (`flutter run`) | high class |
 
-Cakupan: 2 device fisik. Kelas mid tidak diukur (lihat [test-matrix.md](test-matrix.md)). Emulator tidak dipakai.
+Coverage: 2 physical devices. Mid class not measured (see [test-matrix.md](test-matrix.md)). No emulator used.
 
-## FPS per efek (10 menit)
+## FPS per effect (10 minutes)
 
-Sumber: HUD `flutter: HUD frames=… fps=…` tiap detik selama sesi.
+Source: HUD `flutter: HUD frames=… fps=…` every second during the session.
 
 ### A1 — Android low
 
-| Efek | n (dtk) | min | max | mean | median | vs target 24–30 |
+| Effect | n (dtk) | min | max | mean | median | vs target 24–30 |
 |------|---------|-----|-----|------|--------|-----------------|
 | None (bypass) | 608 | 16 | 32 | **29.8** | 30 | ✅ |
 | Blur | 608 | 19 | 32 | **28.4** | 30 | ✅ |
 | Image cover | 607 | 19 | 32 | **28.4** | 30 | ✅ |
 | Color teal | 607 | 25 | 32 | **30.0** | 30 | ✅ |
 
-- Drop sesaat ke 16–19 fps terjadi di None/Blur/Img; median tetap 30.
-- **Tidak ada** event `Performance fallback` / auto-disable di 4 sesi (FR-12 tidak terpicu di device ini dengan Balanced).
+- Momentary drop to 16–19 fps occurred in None/Blur/Img; median stayed at 30.
+- **No** `Performance fallback` / auto-disable event in 4 sessions (FR-12 not triggered on this device with Balanced).
 
 ### I1 — iOS high
 
-| Efek | n (dtk) | min | max | mean | median | vs target 24–30 |
+| Effect | n (dtk) | min | max | mean | median | vs target 24–30 |
 |------|---------|-----|-----|------|--------|-----------------|
 | Blur | 601 | 25 | 31 | **30.0** | 30 | ✅ |
 | Image cover | 600 | 29 | 31 | **30.0** | 30 | ✅ |
 | Color teal | 600 | 29 | 31 | **30.0** | 30 | ✅ |
 | None (bypass) | 600 | 29 | 31 | **30.0** | 30 | ✅ |
 
-- Stabil di 30, noise minimal. No fallback event.
+- Stable at 30, minimal noise. No fallback event.
 
-## CPU (snapshot `dumpsys cpuinfo` — Android only)
+## CPU (`dumpsys cpuinfo` snapshot — Android only)
 
-% CPU proses app saat akhir sesi (bukan rata-rata 10 menit; spot check).
+% CPU of app process at end of session (not 10-minute average; spot check).
 
-| Efek | CPU proses app | TOTAL system |
+| Effect | App process CPU | TOTAL system |
 |------|----------------|--------------|
 | None | ~83–143% * | ~33–40% |
 | Blur | ~139% | ~40% |
 | Image cover | ~133% | ~37% |
 | Color teal | ~143% | ~40% |
 
-\* None bervariasi karena snapshot jatuh di momen berbeda; bypass memang lebih murah saat segmentasi/matikan.
+\* None varied because the snapshot fell at different moments; bypass is indeed cheaper when segmentation is off.
 
-iOS: `dumpsys` tidak tersedia; CPU spot-check via Instruments belum dijalankan — **gap dicatat**.
+iOS: `dumpsys` unavailable; CPU spot-check via Instruments not yet run — **gap noted**.
 
-## Memori (Pss TOTAL, Android, akhir sesi)
+## Memory (Pss TOTAL, Android, end of session)
 
-| Efek | Pss |
+| Effect | Pss |
 |------|-----|
 | None | ~290 MB |
 | Blur | ~285 MB |
 | Image cover | ~287 MB |
 | Color teal | ~286 MB |
 
-Stabil ±5 MB antar efek → **tidak ada lonjakan leak** antar perpindahan efek dalam satu sesi panjang.  
-iOS memori per sesi: belum diukur (perlu `devicectl`/Instruments) — **gap**.
+Stable ±5 MB across effects → **no leak spike** across effect switches within a single long session.  
+iOS memory per session: not yet measured (needs `devicectl`/Instruments) — **gap**.
 
-## Latensi per frame
+## Latency per frame
 
-- Komposit GPU: angka spike T0.7 tetap acuan (~1 ms @640×480, device low-end 32-bit) — lihat [spike-results.md](spike-results.md).
-- Segmentasi MediaPipe: angka spike (arm64 belasan ms, 32-bit ~179 ms @640) — tidak diukur ulang di sesi T6.2 (PROD path tidak memancarkan latensi mentah ke HUD).
-- **Gap:** latensi end-to-end per frame di sesi 10 menit belum dipublikasikan per device.
+- GPU composite: T0.7 spike figure remains the reference (~1 ms @640×480, 32-bit low-end device) — see [spike-results.md](spike-results.md).
+- MediaPipe segmentation: spike figure (arm64 teens of ms, 32-bit ~179 ms @640) — not remeasured in T6.2 session (PROD path does not emit raw latency to HUD).
+- **Gap:** end-to-end latency per frame in the 10-minute session not yet published per device.
 
-## Baterai
+## Battery
 
-| Platform | Hasil |
+| Platform | Result |
 |----------|-------|
-| A1 | **Tidak terukur** — selalu USB charging, `level` 100% sepanjang sesi |
-| I1 | **Tidak terukur** — USB via `flutter run` |
+| A1 | **Not measured** — always USB charging, `level` 100% throughout the session |
+| I1 | **Not measured** — USB via `flutter run` |
 
-Perlu sesi ulang tanpa kabel (wireless adb / lepas charger) untuk angka drain. **Gap.**
+Need a repeat session without cable (wireless adb / unplug charger) for drain figures. **Gap.**
 
-## Kesimpulan vs PRD §7
+## Conclusion vs PRD §7
 
 | Target | Status |
 |--------|--------|
-| 24–30 fps @ 640×480–720p di mid/low | ✅ terpenuhi di A1 (low) & I1 (high), mean 28.4–30 |
-| Komposit ~1 ms/frame | ✅ dari spike, bukan sesi ini |
-| Latensi per frame dipublikasikan di README | ⚠️ sebagian (spike saja) |
-| CPU/mem/baterai dilaporkan di Batasan | ⚠️ CPU & mem Android; baterai & CPU/iOS & mem iOS = gap |
-| 3 kelas perangkat | ❌ hanya 2 device (batasan akses hardware) |
+| 24–30 fps @ 640×480–720p on mid/low | ✅ met on A1 (low) & I1 (high), mean 28.4–30 |
+| Composite ~1 ms/frame | ✅ from spike, not this session |
+| Latency per frame published in README | ⚠️ partial (spike only) |
+| CPU/mem/battery reported in Limitations | ⚠️ CPU & mem Android; battery & CPU/iOS & mem iOS = gap |
+| 3 device classes | ❌ only 2 devices (hardware access limitation) |
 
-## Batasan yang harus jujur di README
+## Limitations to state honestly in README
 
-1. Hanya 2 device fisik; mid-tier tidak ada.
-2. Baterai tidak terukur (perangkat terus dicharge).
-3. CPU/mem iOS tidak di-snapshot di sesi ini.
-4. Latensi per-frame end-to-end belum diukur di sesi 10 menit (hanya spike).
+1. Only 2 physical devices; no mid-tier.
+2. Battery not measured (devices kept charging).
+3. iOS CPU/mem not snapshotted in this session.
+4. End-to-end per-frame latency not measured in the 10-minute session (spike only).
 
-## Soak 30 menit (T6.5, A1)
+## 30-minute soak (T6.5, A1)
 
-Tanggal: 3 November 2026 · Tool: `tool/soak.sh 30` · Raw: `doc/bench-raw/a1_soak_20261103_104351*`
+Date: 3 November 2026 · Tool: `tool/soak.sh 30` · Raw: `doc/bench-raw/a1_soak_20261103_104351*`
 
-- Durasi penuh 30 menit, 30 sampel tiap 60 dtk, PID proses **sama** (29010) dari awal sampai akhir — tanpa restart atau crash.
-- Memori Pss: 163 MB (cold start) → ~250 MB (warmup menit pertama) → **plateau 250–258 MB selama 27 menit sisanya**. Delta warmup→akhir +6,6 MB ≈ noise GC — **tidak ada kebocoran memori**.
-- Crash / ANR / performance-fallback: **0 baris** di logcat 30 menit.
-- Frame pass log terakhir `#54300` ≈ **30,1 fps** stabil sepanjang sesi.
-- Baterai tidak informatif (USB terus mengisi; level naik 65→75).
+- Full 30-minute duration, 30 samples every 60 dtk, process PID **same** (29010) from start to finish — no restart or crash.
+- Pss memory: 163 MB (cold start) → ~250 MB (first-minute warmup) → **plateau 250–258 MB for the remaining 27 minutes**. Warmup→end delta +6,6 MB ≈ GC noise — **no memory leak**.
+- Crash / ANR / performance-fallback: **0 lines** in 30-minute logcat.
+- Last frame pass log `#54300` ≈ **30,1 fps** stable throughout the session.
+- Battery not informative (USB kept charging; level rose 65→75).
 
-### Loop attach/detach 100× (T6.5)
+### 100× attach/detach loop (T6.5)
 
-`example/integration_test/soak_loop_test.dart` — 100 siklus attach→(effek tiap 25)→detach, detach ganda tiap 50, attach final, tanpa error.
+`example/integration_test/soak_loop_test.dart` — 100 cycles attach→(effect every 25)→detach, double detach every 50, final attach, no errors.
 
-- **A1 (Android): lulus** dalam 10 dtk.
-- **I1 (iOS): lulus** dalam 3 dtk.
+- **A1 (Android): passed** in 10 dtk.
+- **I1 (iOS): passed** in 3 dtk.
 
-## Soak 30 menit (T6.5, I1)
+## 30-minute soak (T6.5, I1)
 
-Tanggal: 3 November 2026 · Tool: `flutter run -d <I1> --debug` + monitor 60 dtk/sampel · Log: `/tmp/i1_soak_run.log`, samples: `/tmp/i1_soak30.log`
+Date: 3 November 2026 · Tool: `flutter run -d <I1> --debug` + monitor 60 dtk/sample · Log: `/tmp/i1_soak_run.log`, samples: `/tmp/i1_soak30.log`
 
-- 30 sampel / 30 menit, `flutter run` **ALIVE di semua sampel** — koneksi USB stabil, tanpa lost connection.
-- FPS HUD **30 di setiap sampel** (seragam, tanpa drop ke 20-an).
-- Frame pass log terakhir `#54750` ≈ **30,4 fps** (`30 fps stable`).
-- Crash / lost connection / performance-fallback: **0 event** di 30 menit.
-- Memori iOS tidak di-snapshot (tanpa Instruments) — gap metrik, bukan stabilitas.
+- 30 samples / 30 minutes, `flutter run` **ALIVE in all samples** — stable USB connection, no lost connection.
+- HUD FPS **30 in every sample** (uniform, no drop to the 20s).
+- Last frame pass log `#54750` ≈ **30,4 fps** (`30 fps stable`).
+- Crash / lost connection / performance-fallback: **0 events** in 30 minutes.
+- iOS memory not snapshotted (without Instruments) — metric gap, not stability.
 
-### Gap tersisa T6.5
+### Remaining T6.5 gaps
 
-- Memori soak iOS tidak terukur (perlu Instruments/`xcrun` khusus) — stabilitas dan fps sudah terbukti.
+- iOS soak memory not measured (needs special Instruments/`xcrun`) — stability and fps already proven.
 
-## v0.2.0 — benchmark ulang (T17.1)
+## v0.2.0 — benchmark rerun (T17.1)
 
-Tanggal: 17 November 2026.  
-Protokol: 10 menit per efek, `BackgroundQuality.balanced`, kamera depan 640×480 @30 fps, radius blur 20. Sama dengan protokol v0.1; bedanya sumber angka fps — v0.2 memakai sample native `metricsStream` (~1 Hz), bukan HUD `flutter:` lama. Data mentah tidak disimpan; angka di bawah adalah ringkasan hasil.
+Date: 17 November 2026.  
+Protocol: 10 minutes per effect, `BackgroundQuality.balanced`, front camera 640×480 @30 fps, blur radius 20. Same as v0.1 protocol; difference is the fps figure source — v0.2 uses native `metricsStream` samples (~1 Hz), not the old `flutter:` HUD. Raw data not saved; figures below are result summaries.
 
-A1 memakai Wi-Fi adb dengan kabel dicabut (`bstate=3` sepanjang sesi). I1 memakai USB untuk sesi integration; baterai iOS diukur terpisah pada sesi app standalone tanpa kabel. CPU/memori iOS tidak diukur di T17.1 — cakupan T17.2 (Instruments).
+A1 used Wi-Fi adb with cable unplugged (`bstate=3` throughout the session). I1 used USB for the integration session; iOS battery measured separately in a standalone app session without cable. iOS CPU/memory not measured in T17.1 — T17.2 scope (Instruments).
 
 ### FPS — A1 (Android low)
 
-| Efek | n | mean | median | min | v0.1 mean | Δ |
+| Effect | n | mean | median | min | v0.1 mean | Δ |
 |------|---|------|--------|-----|-----------|---|
 | None | — | **29,96**¹ | — | — | 29,8 | +0,2 |
 | Blur | 584 | **29,84** | 30,0 | 24,2 | 28,4 | +1,4 |
 | Image cover | 583 | **29,83** | 30,0 | 17,3 | 28,4 | +1,4 |
 | Color teal | 583 | **29,82** | 30,0 | 20,0 | 30,0 | −0,2 |
 
-¹ `NoEffect` tidak menghasilkan sample metrik (bypass langsung kembali sebelum gate). Angka diturunkan dari logcat: `frame pass #1` 11:14:23.090 → `#18000` 11:24:23.818 = 17.999 frame / 600,7 s.
+¹ `NoEffect` produces no metric samples (bypass returns immediately before the gate). Figure derived from logcat: `frame pass #1` 11:14:23.090 → `#18000` 11:24:23.818 = 17.999 frame / 600,7 s.
 
 ### FPS — I1 (iOS high)
 
-| Efek | n | mean | median | min | v0.1 mean | Δ |
+| Effect | n | mean | median | min | v0.1 mean | Δ |
 |------|---|------|--------|-----|-----------|---|
-| None | — | tidak diukur² | — | — | 30,0 | — |
+| None | — | not measured² | — | — | 30,0 | — |
 | Blur | 600 | **30,00** | 30,0 | 30,0 | 30,0 | 0 |
 | Image cover | 600 | **30,00** | 30,0 | 30,0 | 30,0 | 0 |
 | Color teal | 601 | **30,00** | 30,0 | 30,0 | 30,0 | 0 |
 
-² Bypass tidak menghasilkan sample metrik, dan harness iOS tidak merekam log frame pass. Angka v0.1 (30,0) dipertahankan sebagai acuan; tidak ada alasan kode untuk berubah pada jalur bypass.
+² Bypass produces no metric samples, and the iOS harness does not record frame pass logs. The v0.1 figure (30,0) is kept as reference; no code reason to change on the bypass path.
 
-### Latensi per frame (baru di v0.2, FR-23)
+### Latency per frame (new in v0.2, FR-23)
 
-Rata-rata sample 1 Hz. `seg` = durasi inferensi segmentasi terakhir; `age` = usia mask yang sedang dikomposit.
+1 Hz sample average. `seg` = last segmentation inference duration; `age` = age of the mask being composited.
 
-| Efek | A1 seg | A1 age | I1 seg | I1 age |
+| Effect | A1 seg | A1 age | I1 seg | I1 age |
 |------|--------|--------|--------|--------|
 | Blur | 84,0 ms | 115,4 ms | 63,9 ms | 131,2 ms |
 | Image cover | 79,1 ms | 107,2 ms | 113,0 ms | 284,2 ms |
 | Color teal | 79,6 ms | 108,1 ms | 115,5 ms | 253,6 ms |
 
-Angka A1 sesuai model landscape (spike T13.4: 87,9 ms). Angka iOS tidak dibandingkan lintas efek secara ketat — beban scene dan frekuensi segmentasi berbeda tiap sesi.
+A1 figures match the landscape model (T13.4 spike: 87,9 ms). iOS figures not strictly compared across effects — scene load and segmentation frequency differ per session.
 
-### CPU dan memori — A1
+### CPU and memory — A1
 
-| Efek | CPU% (mean) | Pss mean | Pss awal → akhir |
+| Effect | CPU% (mean) | Pss mean | Pss start → end |
 |------|-------------|----------|------------------|
 | None | 40,1% | 278,5 MB | 275,5 → 279,8 MB |
 | Blur | 127,8% | 299,9 MB | 290,0 → 305,3 MB |
 | Image cover | 114,0% | 307,1 MB | 297,3 → 311,8 MB |
 | Color teal | 122,2% | 303,3 MB | 296,3 → 307,3 MB |
 
-CPU% diverifikasi silang dengan `dumpsys cpuinfo` (blur 127%, image 116%, color 114%, none 39%). Angka absolut **tidak langsung sejajar** dengan v0.1: v0.2 diukur dari harness `flutter test integration_test`, v0.1 dari app standalone. Pss efek aktif v0.2 lebih tinggi ~13–20 MB daripada v0.1 (~285–290 MB); kenaikan ini dicatat apa adanya, bukan dianggap noise.
+CPU% cross-verified with `dumpsys cpuinfo` (blur 127%, image 116%, color 114%, none 39%). Absolute figures **not directly comparable** with v0.1: v0.2 measured from `flutter test integration_test` harness, v0.1 from standalone app. v0.2 active-effect Pss is ~13–20 MB higher than v0.1 (~285–290 MB); this increase is recorded as-is, not treated as noise.
 
-iOS: CPU/memori tidak diukur di sesi T17.1; lihat bagian T17.2 di bawah.
+iOS: CPU/memory not measured in T17.1 session; see T17.2 section below.
 
-### Baterai
+### Battery
 
-A1 — dari sesi integration 10 menit, kabel dicabut:
+A1 — from 10-minute integration session, cable unplugged:
 
-| Efek | Awal | Akhir | Turun |
-|------|------|-------|-------|
-| None | 60% | 57% | 3 poin |
-| Blur | 57% | 54% | 3 poin |
-| Image cover | 54% | 52% | 2 poin |
-| Color teal | 52% | 50% | 2 poin |
+| Effect | Start | End | Drop |
+|------|--------|-------|-------|
+| None | 60% | 57% | 3 points |
+| Blur | 57% | 54% | 3 points |
+| Image cover | 54% | 52% | 2 points |
+| Color teal | 52% | 50% | 2 points |
 
-Total 60% → 50% dalam 40 menit (~2,5 poin per 10 menit).
+Total 60% → 50% in 40 minutes (~2,5 points per 10 minutes).
 
-I1 — sesi app standalone terpisah, tanpa kabel, efek dipilih manual (None / Blur radius 20 / Teal / Asset Office):
+I1 — separate standalone app session, without cable, effects selected manually (None / Blur radius 20 / Teal / Asset Office):
 
-| Efek | Awal | Akhir | Turun |
-|------|------|-------|-------|
-| None | 88% | 87% | 1 poin |
-| Blur | 87% | 83% | 4 poin |
-| Color teal | 83% | 81% | 2 poin |
-| Image cover | 81% | 78% | 3 poin |
+| Effect | Start | End | Drop |
+|------|--------|-------|-------|
+| None | 88% | 87% | 1 point |
+| Blur | 87% | 83% | 4 points |
+| Color teal | 83% | 81% | 2 points |
+| Image cover | 81% | 78% | 3 points |
 
-Catatan: angka iOS berasal dari sesi berbeda dengan angka fps, bukan dari harness yang sama. Hal ini menjadi batasan metode, bukan hasil pengukuran yang cacat.
+Note: iOS figures come from a different session than the fps figures, not from the same harness. This is a method limitation, not a flawed measurement result.
 
-### Anomali
+### Anomalies
 
-- A1 image: tiga sample di t≈411,7–413,8 s turun ke 17,3–22,8 fps sementara `seg` tetap 68–76 ms. Pulih dalam 1 detik, tidak memicu fallback — gangguan sesaat di luar segmentasi.
-- I1 color: satu sample `seg` 829 ms; fps tetap 30,0, tidak ada fallback.
+- A1 image: three samples at t≈411,7–413,8 s dropped to 17,3–22,8 fps while `seg` stayed at 68–76 ms. Recovered within 1 second, no fallback triggered — momentary disturbance outside segmentation.
+- I1 color: one `seg` sample 829 ms; fps stayed at 30,0, no fallback.
 
-### Kesimpulan vs T17.1
+### Conclusion vs T17.1
 
 | Target | Status |
 |--------|--------|
-| Tidak ada regresi fps vs v0.1 | ✅ A1 blur/image +1,4; I1 30,0 semua efek aktif |
-| Baterai terukur di dua platform | ✅ A1 dari integration; iOS dari sesi standalone terpisah |
-| CPU/memori | ⚠️ A1 tersedia; iOS masih gap (T17.2) |
-| Tiga kelas perangkat | ❌ tetap dua device; kelas mid tidak tersedia (T12.3) |
+| No fps regression vs v0.1 | ✅ A1 blur/image +1,4; I1 30,0 for all active effects |
+| Battery measured on two platforms | ✅ A1 from integration; iOS from separate standalone session |
+| CPU/memory | ⚠️ A1 available; iOS still a gap (T17.2) |
+| Three device classes | ❌ still two devices; mid class unavailable (T12.3) |
 
-## CPU dan memori iOS — Instruments (T17.2)
+## iOS CPU and memory — Instruments (T17.2)
 
-Tanggal: 18 November 2026.  
-Metode: `xctrace record` dengan template **Activity Monitor**, attach ke proses `Runner.app` yang diverifikasi (dua instance terpasang di device; yang salah dimatikan lebih dulu). Sesi utama: soak 30 menit dengan `BlurEffect(radius: 20)`. Sesi pendek 5 menit untuk efek lain. Data mentah tidak disimpan; angka di bawah adalah ringkasan hasil.
+Date: 18 November 2026.  
+Method: `xctrace record` with **Activity Monitor** template, attached to verified `Runner.app` process (two instances installed on device; wrong one killed first). Main session: 30-minute soak with `BlurEffect(radius: 20)`. Short 5-minute session for other effects. Raw data not saved; figures below are result summaries.
 
-| Efek | Durasi | CPU% mean | CPU% median | CPU% maks | Memory (physical footprint) | Real Mem |
+| Effect | Duration | CPU% mean | CPU% median | CPU% max | Memory (physical footprint) | Real Mem |
 |------|--------|-----------|-------------|-----------|------------------------------|----------|
 | None | 5 mnt | 19,1% | 19,1% | 20,2% | 273,7 MB | 442,9 MB |
 | Blur (soak) | 30 mnt | **115,4%** | 122,0% | 146,3% | 288,1 MB | 433,1 MB |
 | Image (Asset Office) | 5 mnt | 100,8% | 99,4% | 131,8% | 291,3 MB | 587,3 MB |
 | Color teal | 5 mnt | 99,7% | 98,7% | 126,8% | 288,0 MB | 621,6 MB |
 
-Soak 30 menit menghasilkan 1.728 sampel (~1 Hz), dari `00:00.000` sampai `29:59.264`. CPU rata-rata naik dari **97,4%** pada 5 menit pertama menjadi **123,9%** pada 5 menit terakhir. Memory physical footprint tetap **291,2 → 286,7 MB**, Real Mem **442,1 → 437,1 MB** — tidak ada pertumbuhan berkelanjutan. Kenaikan CPU tidak disertai pembengkakan memori dan tidak ada pengukuran fps pada sesi ini, jadi lebih mungkin perubahan beban/scene daripada kebocoran.
+30-minute soak produced 1.728 samples (~1 Hz), from `00:00.000` to `29:59.264`. Average CPU rose from **97,4%** in first 5 minutes to **123,9%** in last 5 minutes. Memory physical footprint stayed **291,2 → 286,7 MB**, Real Mem **442,1 → 437,1 MB** — no sustained growth. CPU increase not accompanied by memory swelling and no fps measurement in this session, so more likely load/scene change than a leak.
 
-Efek aktif mengonsumsi ~100–115% CPU, sebanding dengan A1 (114–128%). `None` di iOS jauh lebih murah (19,1%) daripada A1 (40,1%); angka keduanya berasal dari alat berbeda (Activity Monitor vs `top`), jadi tidak dibandingkan langsung.
+Active effects consume ~100–115% CPU, comparable to A1 (114–128%). `None` on iOS is much cheaper (19,1%) than A1 (40,1%); both figures come from different tools (Activity Monitor vs `top`), so not directly compared.
 
-**Kesimpulan T17.2:** celah CPU/memori iOS dari T6.2 dan T6.5 tertutup. Tidak ada indikasi kebocoran memori pada soak 30 menit.
+**T17.2 conclusion:** iOS CPU/memory gap from T6.2 and T6.5 closed. No indication of memory leak in 30-minute soak.
 
-## Latensi frame → output (T17.3)
+## Frame → output latency (T17.3)
 
-Tanggal: 18 November 2026.  
-Sumber: `metricsStream.processorLatencyMs`, efek `ColorEffect(teal)`, `BackgroundQuality.balanced`, 640×480 @30 fps, sesi 2 menit per device. Data mentah tidak disimpan; angka di atas adalah ringkasan hasil.
+Date: 18 November 2026.  
+Source: `metricsStream.processorLatencyMs`, effect `ColorEffect(teal)`, `BackgroundQuality.balanced`, 640×480 @30 fps, 2-minute session per device. Raw data not saved; figures above are result summaries.
 
-| Device | n | mean | median | min | maks | p95 |
+| Device | n | mean | median | min | max | p95 |
 |--------|---|------|--------|-----|------|-----|
 | A1 (Android low) | 116 | 5,97 ms | **0,90 ms** | 0,50 ms | 32,20 ms | 27,20 ms |
 | I1 (iOS high) | 120 | 1,33 ms | **1,40 ms** | 1,00 ms | 1,60 ms | 1,50 ms |
 
-Distribusi A1 dua puncak: 92/116 sampel ≈ 1,4 ms, 24/116 sampel ≈ 23,5 ms. Sampel lambat bertepatan dengan frame yang melakukan readback/upload mask untuk segmentasi; komposit GPU sendiri tetap ~1 ms. I1 stabil di ~1,3–1,4 ms.
+A1 distribution two peaks: 92/116 samples ≈ 1,4 ms, 24/116 samples ≈ 23,5 ms. Slow samples coincided with frames doing mask readback/upload for segmentation; GPU composite itself stayed ~1 ms. I1 stable at ~1,3–1,4 ms.
 
-**Definisi:** waktu mulai = frame tiba di processor native; waktu akhir = frame hasil komposit dikembalikan ke WebRTC. Angka ini **tidak** mencakup pembacaan sensor kamera, encode, jaringan, atau render layar — bukan angka glass-to-glass. Angka ini dipublikasikan juga di README bagian Limitations.
+**Definition:** start time = frame arrives at native processor; end time = composited frame returned to WebRTC. This figure **does not** include camera sensor readout, encode, network, or screen render — not a glass-to-glass figure. This figure is also published in README Limitations section.
 
-**Kesimpulan T17.3:** angka latensi pipeline tersedia untuk kedua platform dan dipublikasikan di README.
+**T17.3 conclusion:** pipeline latency figures available for both platforms and published in README.

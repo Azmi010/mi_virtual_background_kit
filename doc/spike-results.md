@@ -1,27 +1,26 @@
-# Hasil spike Fase 0
+# Phase 0 spike results
 
-Semua angka berasal dari run di track pengerjaan ini (Oktober 2026), kecuali yang
-ditandai emulator. Kode spike ada di `android/src/main/kotlin/.../spike/`,
-`ios/.../MiVirtualBackgroundKitPlugin.swift`, dan `example/` (dihapus sebelum rilis).
+All numbers come from runs on this work track (October 2026), except those marked emulator. Spike code is in `android/src/main/kotlin/.../spike/`,
+`ios/.../MiVirtualBackgroundKitPlugin.swift`, and `example/` (removed before release).
 
-## Perangkat uji
+## Test devices
 
-| ID | Perangkat | ABI | OS | Peran |
+| ID | Device | ABI | OS | Role |
 |---|---|---|---|---|
-| P1 | Samsung SM-A135F (RR8T601FP0R) | `armeabi-v7a` (32-bit saja) | Android 14 (SDK 34) | Fisik, kelas low-end, device utama |
-| P2 | iPhone 15 (00008120-0016195A0CC20032) | arm64 | iOS 26.5 | Fisik, spike iOS (T0.5) |
-| E1 | Emulator `sdk_gphone16k_arm64` (emulator-5554) | `arm64-v8a` | Android 17 (SDK 37) | Pembanding saja — GL software (swiftshader), angka latency tidak representatif |
+| P1 | Samsung SM-A135F (RR8T601FP0R) | `armeabi-v7a` (32-bit only) | Android 14 (SDK 34) | Physical, low-end class, primary device |
+| P2 | iPhone 15 (00008120-0016195A0CC20032) | arm64 | iOS 26.5 | Physical, iOS spike (T0.5) |
+| E1 | Emulator `sdk_gphone16k_arm64` (emulator-5554) | `arm64-v8a` | Android 17 (SDK 37) | Comparison only — software GL (swiftshader), latency numbers not representative |
 
-Metode umum: benchmark dijalankan otomatis sekali per launch example (flag
-`_benchmarked`), input = frame kamera nyata lewat readback GPU 640x480. Tiap engine:
-jalur ber-skala dulu (256/144/96) sebagai warmup, lalu 3 run ber-timing pada 640x480.
+General method: benchmark runs automatically once per example launch (flag
+`_benchmarked`), input = real camera frame via GPU readback 640x480. Each engine:
+scaled path first (256/144/96) as warmup, then 3 timed runs at 640x480.
 
-## T0.4 — Hook frame Android (P1)
+## T0.4 — Android frame hook (P1)
 
-Titik hook: `LocalVideoTrack.addProcessor(ExternalVideoFrameProcessing)` yang diambil
-lewat `FlutterWebRTCPlugin.sharedSingleton.getLocalTrack(trackId)`.
+Hook point: `LocalVideoTrack.addProcessor(ExternalVideoFrameProcessing)` obtained
+via `FlutterWebRTCPlugin.sharedSingleton.getLocalTrack(trackId)`.
 
-Hasil live:
+Live results:
 
 ```
 SPIKE attach=true trackId=42f95020-...
@@ -29,235 +28,236 @@ first frame buffer=org.webrtc.TextureBufferImpl rot=270 size=480x640
 SPIKE frames=... fps=27..31 gpu=717..1795us type=OES (stabil >1 menit)
 ```
 
-- Buffer masuk berupa texture GPU (`TextureBufferImpl`, tipe OES), bukan I420 CPU.
-  Transform berbasis akses byte CPU pada buffer ini tidak akan bekerja.
-- Toggle enable/disable terverifikasi visual di preview (merah on ↔ normal off).
-- Komposit spike (GLES2, texture → FBO → texture) ±0,8–1,7 ms per frame @640x480,
-  30 fps tetap stabil (angka insidental dari log timer; pengukuran resmi T0.7 menyusul).
+- Incoming buffer is a GPU texture (`TextureBufferImpl`, OES type), not CPU I420.
+  Transforms based on CPU byte access on this buffer will not work.
+- Enable/disable toggle verified visually in preview (red on ↔ normal off).
+- Spike composite (GLES2, texture → FBO → texture) ±0,8–1,7 ms per frame @640x480,
+  30 fps remains stable (incidental numbers from timer log; official T0.7 measurement follows).
 
-Aturan desain yang terbukti perlu (dari riset API + pola LiveKit):
+Design rules proven necessary (from API research + LiveKit patterns):
 
-- Cache objek `LocalVideoTrack` saat attach; jangan lookup ulang by ID — panggilan
-  Dart `stream.getMediaTracks()` menimpa map `localTracks` dengan objek baru yang
-  tidak terpasang sebagai processor.
-- Pin versi `flutter_webrtc` (API native ini tidak terlindungi semver).
+- Cache `LocalVideoTrack` object on attach; do not re-lookup by ID — Dart call
+  `stream.getMediaTracks()` overwrites `localTracks` map with new objects that are
+  not attached as processors.
+- Pin `flutter_webrtc` version (this native API is not protected by semver).
 
-## T0.5 — Hook frame iOS (P2)
+## T0.5 — iOS frame hook (P2)
 
-Titik hook: `LocalVideoTrack.addProcessing(_:)` lewat
+Hook point: `LocalVideoTrack.addProcessing(_:)` via
 `FlutterWebRTCPlugin.sharedSingleton().localTracks[trackId]`.
 
-Hasil live:
+Live results:
 
 ```
 SPIKE attach=true trackId=FA4B3E0A-...
 buffer=RTCCVPixelBuffer rot=90 size=640x480, 30 fps stabil
 ```
 
-Temuan: transform pertama (asumsi BGRA, stride setengah pixel) menghasilkan
-garis-garis halus. Perbaikan: deteksi format runtime
-(`CVPixelBufferGetPixelFormatType`), branch BGRA (swap R/B tiap pixel) vs YCbCr
-biplanar (swap pasangan Cb/Cr di plane 1, luma tidak disentuh), cek status lock.
-Verifikasi visual di device: geser warna rapi tanpa garis saat enable, normal saat
-disable. Format FourCC di-log di frame pertama (device console tidak di-capture,
-verifikasi via perilaku visual).
+Finding: the first transform (BGRA assumption, half-pixel stride) produced thin
+lines. Fix: runtime format detection (`CVPixelBufferGetPixelFormatType`), BGRA
+branch (swap R/B per pixel) vs biplanar YCbCr (swap Cb/Cr pairs in plane 1, luma
+untouched), check lock status. Visual verification on device: clean color slide
+without lines when enabled, normal when disabled. FourCC format logged on the
+first frame (device console not captured, verified via visual behavior).
 
-## T0.6 — Mesin segmentasi
+## T0.6 — Segmentation engine
 
-Kandidat sesuai PRD: **MediaPipe Image Segmenter** vs **ML Kit Selfie Segmentation**.
+Candidates per PRD: **MediaPipe Image Segmenter** vs **ML Kit Selfie Segmentation**.
 
 - MediaPipe: `com.google.mediapipe:tasks-vision:0.10.20` + asset
-  `selfie_segmenter.tflite` (249.537 byte) di app, delegate CPU.
+  `selfie_segmenter.tflite` (249.537 bytes) in app, CPU delegate.
 - ML Kit: `com.google.mlkit:segmentation-selfie:16.0.0-beta6`, mode
-  `SINGLE_IMAGE_MODE` + `enableRawSizeMask`, API async — timing = wall time
-  call-to-result, dijalankan di thread background (lihat "Temuan blocking").
+  `SINGLE_IMAGE_MODE` + `enableRawSizeMask`, async API — timing = wall time
+  call-to-result, run on a background thread (see "Blocking findings").
 
-### Latensi — P1 (fisik, 640x480 → mask)
+### Latency — P1 (physical, 640x480 → mask)
 
-| Engine | Input 640 (3 run, ms) | Median | Input 256 | Input 144 | Input 96 |
+| Engine | Input 640 (3 runs, ms) | Median | Input 256 | Input 144 | Input 96 |
 |---|---|---|---|---|---|
 | MediaPipe | 155 / 182 / 179 | **179** | 174 | 123 | 122 |
 | ML Kit* | 115 / 111 / 81 | **111** | 292† | 73 | 90 |
 
-\* Mask ML Kit selalu 256x256 berapa pun input — model fixed.
-† Termasuk panggilan pertama sesi (init model); run pertama sesi sebelumnya
-tercatat 417–610 ms. Steady state ML Kit 80–140 ms.
+\* ML Kit mask is always 256x256 regardless of input — fixed model.
+† Includes the first call of the session (model init); the first run of the
+previous session was recorded at 417–610 ms. ML Kit steady state 80–140 ms.
 
-Catatan: angka ML Kit lebih cepat di device ini, TAPI mask-nya fixed 256x256
-(kualitas tepi lebih kasar dari input 640). MediaPipe mask = resolusi input.
+Note: ML Kit numbers are faster on this device, BUT its mask is fixed at 256x256
+(edge quality coarser than 640 input). MediaPipe mask = input resolution.
 
-### Latensi — E1 (emulator, pembanding saja)
+### Latency — E1 (emulator, comparison only)
 
-| Engine | Input 640 (3 run, ms) | Input 256 | Input 144 | Input 96 |
+| Engine | Input 640 (3 runs, ms) | Input 256 | Input 144 | Input 96 |
 |---|---|---|---|---|
 | MediaPipe | 17 / 17 / 17 | 11,4 | 3,8 | 4,1 |
 | ML Kit | 3,3 / 25,9 / 7,3 | 173† | 5,5 | 9,7 |
 
-† Init pertama di sesi emulator.
+† First init in the emulator session.
 
-### Resolusi dan encoding mask
+### Mask resolution and encoding
 
-- MediaPipe: `categoryMask` UINT8, ukuran = resolusi input (640x480 @ input 640).
-  Encoding empiris **person=0, background=255** — dibuktikan histogram pada frame
-  tanpa orang (semua 255) dan frame berwajah (v0=120.526, v255=186.674, tanpa nilai
-  lain), serta siluet yang cocok dengan mask ML Kit setelah predicate dibalik.
-- ML Kit: buffer FLOAT32 confidence, selalu 256x256 (nama asset model:
-  `selfiesegmentation_mlkit-256x256-2021_01_19-v1215.f16.tflite`, bundel di AAR).
+- MediaPipe: `categoryMask` UINT8, size = input resolution (640x480 @ input 640).
+  Empirical encoding **person=0, background=255** — proven by histogram on a frame
+  without a person (all 255) and a frame with a face (v0=120.526, v255=186.674, no
+  other values), plus a silhouette matching the ML Kit mask after the predicate
+  is inverted.
+- ML Kit: FLOAT32 confidence buffer, always 256x256 (model asset name:
+  `selfiesegmentation_mlkit-256x256-2021_01_19-v1215.f16.tflite`, bundled in AAR).
 
-### Akurasi tepi (overlay, `doc/spike-t06/`)
+### Edge accuracy (overlay, `doc/spike-t06/`)
 
-Overlay = mask hijau 50% di atas frame asli, diambil dari P1 dan E1.
+Overlay = 50% green mask over the original frame, taken from P1 and E1.
 
-| Skenario | MediaPipe (640) | ML Kit (256) |
+| Scenario | MediaPipe (640) | ML Kit (256) |
 |---|---|---|
-| Berwajah (P1) | Siluet kepala terdeteksi, detail rambut halus, beberapa leak kecil di tepi bahu/rambut | Siluet rapi dan kompak, tepi lebih kasar/blocky (resolusi rendah), tanpa detail rambut |
-| Plafon kosong (P1) | False positive seluruh frame | Tidak ada deteksi |
-| Ruangan virtual (E1, tanpa orang) | False positive luas (dinding + furnitur) | False positif lebih ketat (furnitur saja, dinding bersih) |
+| With face (P1) | Head silhouette detected, fine hair detail, some small leaks at shoulder/hair edges | Clean, compact silhouette, coarser/blocky edges (low resolution), no hair detail |
+| Empty ceiling (P1) | False positive across whole frame | No detection |
+| Virtual room (E1, no person) | Widespread false positive (walls + furniture) | Tighter false positive (furniture only, clean walls) |
 
-Kesimpulan akurasi: keduanya terdeteksi benar saat subjek orang ada; keduanya
-false-positive di scene tanpa orang (wajar untuk model segmentasi orang, terutama
-scene sintetis). MediaPipe memberi mask setara resolusi input (detail tepi lebih
-halus saat dipakai 640), ML Kit terbatas 256x256.
+Accuracy conclusion: both detected correctly when a person subject is present;
+both false-positive in scenes without a person (expected for a person segmentation
+model, especially synthetic scenes). MediaPipe gives a mask at input resolution
+(finer edge detail when used at 640), ML Kit is limited to 256x256.
 
-### Ukuran
+### Size
 
-| Rute | Komponen | Ukuran |
+| Route | Component | Size |
 |---|---|---|
-| MediaPipe | `tasks-vision` AAR | 17,6 MB (multi-ABI native) |
+| MediaPipe | `tasks-vision` AAR | 17,6 MB (native multi-ABI) |
 | MediaPipe | `tasks-core` AAR | 1,2 MB |
-| MediaPipe | model `selfie_segmenter.tflite` (asset app) | 250 KB |
-| ML Kit | `segmentation-selfie` AAR (termasuk model 249.024 B) | 739 KB |
-| ML Kit | seluruh tree resolved (17 artifact) | ≈ 24,2 MB — didominasi `mlkit:mediapipe-internal` 21,6 MB |
+| MediaPipe | model `selfie_segmenter.tflite` (app asset) | 250 KB |
+| ML Kit | `segmentation-selfie` AAR (including model 249.024 B) | 739 KB |
+| ML Kit | entire resolved tree (17 artifacts) | ≈ 24,2 MB — dominated by `mlkit:mediapipe-internal` 21,6 MB |
 
-Kontribusi per-ABI di APK final belum diukur (kedua AAR multi-ABI).
+Per-ABI contribution in the final APK not measured (both AARs multi-ABI).
 
-### Lisensi (dari POM resolved)
+### Licenses (from resolved POM)
 
-- MediaPipe `tasks-vision`: **Apache-2.0** — kompatibel dengan paket MIT.
+- MediaPipe `tasks-vision`: **Apache-2.0** — compatible with MIT package.
 - ML Kit `segmentation-selfie`/`common`/`vision-common`: **"ML Kit Terms of
-  Service"** — bukan lisensi open-source; konflik potensial untuk package
-  pub.dev berlisensi MIT.
+  Service"** — not an open-source license; potential conflict for MIT-licensed
+  pub.dev package.
 
-### Privasi dan dependensi (PRD G4: tanpa jaringan/telemetri)
+### Privacy and dependencies (PRD G4: no network/telemetry)
 
-- ML Kit menarik stack: `datatransport` (api/runtime/backend-cct),
+- ML Kit pulls a stack: `datatransport` (api/runtime/backend-cct),
   `firebase-encoders`(-json/-proto), `firebase-components`, `play-services`
-  (base/basement/tasks), `odml:image`. Strukturnya siap network meski pada run
-  normal benchmark tidak mencatat job/jaringan terpicu (jendela observasi pendek).
-- MediaPipe juga me-link `datatransport` (class `JobInfoScheduler` tercatat ada di
-  classpath). Catatan jujur: `disableTransportNetwork()` di spike saat ini **hanya
-  log keberadaan class, belum benar-benar menonaktifkan scheduler** — implementasi
-  no-op-nya menyusul saat integrasi final.
-- Rekomendasi untuk ADR (T0.8): **MediaPipe** — lisensi Apache-2.0, privasi lebih
-  bersih, resolusi mask mengikuti kebutuhan; trade-off latensi lebih tinggi di
-  P1 (179 ms vs 111 ms) yang bisa ditangani dengan input lebih kecil / strategi
-  frekuensi rendah. GPU delegate MediaPipe **belum diuji di track ini**.
+  (base/basement/tasks), `odml:image`. Its structure is network-ready even though
+  normal benchmark runs did not record triggered jobs/network (short observation
+  window).
+- MediaPipe also links `datatransport` (class `JobInfoScheduler` recorded present
+  in classpath). Honest note: `disableTransportNetwork()` in the current spike
+  **only logs class presence, does not actually disable the scheduler** — its
+  no-op implementation follows during final integration.
+- Recommendation for ADR (T0.8): **MediaPipe** — Apache-2.0 license, cleaner
+  privacy, mask resolution follows needs; trade-off of higher latency on P1
+  (179 ms vs 111 ms) that can be handled with smaller input / low-frequency
+  strategy. MediaPipe GPU delegate **not yet tested on this track**.
 
-## T0.7 — Komposit GPU dibanding CPU (P1)
+## T0.7 — GPU vs CPU composite (P1)
 
-Scope: blur (shader 3x3 box, radius 1 texel) dan penggantian gambar (mix 50/50
-dengan asset mandiri `bench_bg.png`, gradient 64x64). Hanya device
-fisik P1.
+Scope: blur (3x3 box shader, radius 1 texel) and image replacement (50/50 mix with
+standalone asset `bench_bg.png`, 64x64 gradient). Physical device P1 only.
 
-Metode: window 90 frame (≈3 detik) per mode. `fps` = kedatangan frame ke
-processor. `CPU%` = Δ(utime+stime) seluruh proses app / wall × 100 (CLK_TCK=100,
-debug build). `avgUs` = Δ total waktu compose / jumlah compose (hanya mode GPU).
-Jalur CPU per frame = readback GPU + operasi Java (upload texture belum diukur).
+Method: 90-frame window (≈3 seconds) per mode. `fps` = frame arrival at
+processor. `CPU%` = Δ(utime+stime) of whole app process / wall × 100 (CLK_TCK=100,
+debug build). `avgUs` = Δ total compose time / number of composites (GPU modes
+only). CPU path per frame = GPU readback + Java operations (texture upload not
+measured).
 
-### Hasil 640x480
+### Results 640x480
 
-| Mode | fps | CPU% proses | Biaya per frame |
+| Mode | fps | process CPU% | Cost per frame |
 |---|---|---|---|
-| off (tanpa efek) | 30,1 | 93,8 | — |
+| off (no effect) | 30,1 | 93,8 | — |
 | GPU blur | 30,2 | 91,6 | compose 1,05 ms |
 | GPU image | 30,3 | 90,9 | compose 0,93 ms |
 | CPU blur | — | — | readback 5,9 + blur 70,0 = **75,9 ms (≈13 fps)** |
 | CPU image | — | — | readback 5,9 + lerp 30,4 = **36,3 ms (≈28 fps)** |
 
-### Hasil 1280x720 (kamera depan A135F mendukung 720p — resolusi aktual terkonfirmasi)
+### Results 1280x720 (A135F front camera supports 720p — actual resolution confirmed)
 
-| Mode | fps | CPU% proses | Biaya per frame |
+| Mode | fps | process CPU% | Cost per frame |
 |---|---|---|---|
-| off (tanpa efek) | 30,3 | 80,8 | — |
+| off (no effect) | 30,3 | 80,8 | — |
 | GPU blur | 30,1 | 81,2 | compose 1,21 ms |
 | GPU image | 30,2 | 82,5 | compose 1,06 ms |
 | CPU blur | — | — | readback 42,4 + blur 211,0 = **253,4 ms (≈4 fps)** |
 | CPU image | — | — | readback 42,4 + lerp 91,0 = **133,4 ms (≈7,5 fps)** |
 
-Catatan jujur:
+Honest notes:
 
-- fps 30 stabil di semua mode GPU pada kedua resolusi; blur/image menambah
-  <0,3 ms terhadap baseline.
-- CPU% datar antar mode (selisih ≤3 poin, tidak berarah — 640 malah lebih
-  tinggi dari 720): didominasi beban baseline app debug (kamera, preview,
-  logging, engine). Delta efek GPU berada di bawah noise floor metrik ini —
-  pemakaian CPU diputuskan lewat timing operasi langsung di atas.
-- Window "off" menampilkan `avgUs` semu (985–2563 µs) — artefak boundary:
-  1–3 frame yang sedang berjalan tetap ter-compose saat flag dimatikan.
-  Baseline off = fps + CPU%, bukan avgUs.
-- Upload texture (jalur CPU→GPU) belum diukur; dengan readback saja jalur CPU
-  sudah 76 ms (640) / 253 ms (720) per frame — di luar budget 33 ms.
+- 30 fps stable in all GPU modes at both resolutions; blur/image adds <0,3 ms
+  over baseline.
+- CPU% flat across modes (difference ≤3 points, not directional — 640 even
+  higher than 720): dominated by baseline debug app load (camera, preview,
+  logging, engine). GPU effect delta is below this metric's noise floor — CPU
+  usage decided via direct operation timing above.
+- "off" window shows spurious `avgUs` (985–2563 µs) — boundary artifact: 1–3
+  in-flight frames still get composited when the flag is turned off. Off baseline
+  = fps + CPU%, not avgUs.
+- Texture upload (CPU→GPU path) not measured; with readback alone the CPU path is
+  already 76 ms (640) / 253 ms (720) per frame — outside the 33 ms budget.
 
-Kesimpulan: **GPU wajib.** Jalur CPU tidak real-time di kedua resolusi (blur
-≈13 fps @640, ≈4 fps @720 bahkan sebelum upload), sedangkan GPU blur/image
-menahan 30 fps dengan biaya ±1 ms.
+Conclusion: **GPU mandatory.** CPU path is not real-time at either resolution
+(blur ≈13 fps @640, ≈4 fps @720 even before upload), while GPU blur/image holds
+30 fps at ±1 ms cost.
 
-## Temuan blocking (diperbaiki selama spike)
+## Blocking findings (fixed during spike)
 
-1. **Deadlock ML Kit di main thread.** Task listener ML Kit diantarkan di main
-   looper; `latch.await()` di method channel (main thread) menggantung selamanya —
-   seluruh app berhenti (timer frames mati). Fix: bagian ML Kit dijalankan di
-   thread background, result.success diposting balik ke main; latch diberi timeout
-   60 detik.
-2. **`glReadPixels` dari main thread selalu nol.** EGL context hidup di capture
-   thread; GL call dari main thread silent no-op. Ditambah lagi `readBackRgba`
-   asli tidak pernah meng-copy buffer direct balik ke `ByteArray` — readback
-   selalu kosong (overlay putih). Fix: readback dipindah ke dalam `onFrame`
-   (capture thread) via request+latch, dan copy back ditambahkan.
-3. **Readback memakai shader tint preview.** Program fragment merah
-   (`×(1,0,0)`) dipakai bersama oleh compose dan readback → semua pixel readback
-   hanya kanal merah (mask dihitung dari gambar merah-monokrom, terlihat dari
-   overlay merah). Fix: shader readback tersendiri tanpa tint.
-4. **Predicate mask MediaPipe kebalik.** `!= 0` menandai background (255) sebagai
-   orang; terbaca dari histogram nilai (lihat T0.6). Fix: `== 0`.
-5. **Format buffer iOS salah asumsi (T0.5).** Lihat bagian T0.5.
-6. **Compositor baru NPE saat readback pertama (T0.7).** `vertexBuffer`/
-   `texMatrixBuffer` hanya di-init oleh `buildProgram` (jalur tint). Setelah
-   restart kamera 720p (compositor baru), readback tiba sebelum compose
-   pertama → `glVertexAttribPointer(null)` → `Buffer.remaining()` NPE. Fix:
-   `ensureBuffers()` lazy di `drawCamera` dan `drawQuad`.
+1. **ML Kit deadlock on main thread.** ML Kit Task listener delivered on main
+   looper; `latch.await()` in method channel (main thread) hangs forever — whole
+   app stops (frame timer dies). Fix: ML Kit part runs on background thread,
+   result.success posted back to main; latch given 60-second timeout.
+2. **`glReadPixels` from main thread always zero.** EGL context lives on capture
+   thread; GL calls from main thread are silent no-ops. Additionally the original
+   `readBackRgba` never copied the direct buffer back to `ByteArray` — readback
+   always empty (white overlay). Fix: readback moved inside `onFrame` (capture
+   thread) via request+latch, and copy back added.
+3. **Readback uses preview tint shader.** Red fragment program (`×(1,0,0)`)
+   shared by compose and readback → all readback pixels only the red channel
+   (mask computed from monochrome-red image, visible from red overlay). Fix:
+   separate readback shader without tint.
+4. **MediaPipe mask predicate inverted.** `!= 0` marks background (255) as
+   person; read from value histogram (see T0.6). Fix: `== 0`.
+5. **iOS buffer format wrong assumption (T0.5).** See T0.5 section.
+6. **New compositor NPE on first readback (T0.7).** `vertexBuffer`/
+   `texMatrixBuffer` only initialized by `buildProgram` (tint path). After 720p
+   camera restart (new compositor), readback arrives before first compose →
+   `glVertexAttribPointer(null)` → `Buffer.remaining()` NPE. Fix: lazy
+   `ensureBuffers()` in `drawCamera` and `drawQuad`.
 
-## T13.1 — Integrasi LiveKit (10 November 2026)
+## T13.1 — LiveKit integration (10 November 2026)
 
-Spike penentu mekanisme pemasangan efek ke track LiveKit untuk adapter v0.2
-(bahan ADR 0002 butir 5, T15.2/T15.3). Log dan screenshot mentah per metode di
-`doc/spike-t131/<A|B|C|D>/` (`<M>.log`, `<M>_t131.txt`, `<M>_<stage>.jpeg`).
+Spike determining the mechanism for attaching effects to LiveKit tracks for the
+v0.2 adapter (material for ADR 0002 item 5, T15.2/T15.3). Raw logs and screenshots
+per method in `doc/spike-t131/<A|B|C|D>/` (`<M>.log`, `<M>_t131.txt`, `<M>_<stage>.jpeg`).
 
-### Lingkungan
+### Environment
 
-- Device: **A1** (Samsung SM-A135F, Android 14) — satu-satunya device (T12.3);
-  iOS di luar cakupan T13.1.
+- Device: **A1** (Samsung SM-A135F, Android 14) — only device (T12.3); iOS out of
+  scope for T13.1.
 - `livekit_client 2.13.1`, `flutter_webrtc 1.6.2+hotfix.4`.
-- Server: `livekit/livekit-server --dev` di Docker + `adb reverse tcp:7880`.
+- Server: `livekit/livekit-server --dev` in Docker + `adb reverse tcp:7880`.
 - Harness: `example/lib/spike_t131_page.dart` (branch `spike/t13.1-livekit`),
-  stage maju manual lewat tombol "Next stage" agar screenshot tepat waktu.
-  Log device: `tool/t131_log.sh <M>`; analisa teal: `tool/t131_teal.py`.
-- Efek tes: `ColorEffect(0xFF00E5CC)` — teal mengisi latar saat tidak ada orang.
+  stage advanced manually via "Next stage" button for timely screenshots. Device
+  log: `tool/t131_log.sh <M>`; teal analysis: `tool/t131_teal.py`.
+- Test effect: `ColorEffect(0xFF00E5CC)` — teal fills background when no person
+  present.
 
-### Empat mekanisme yang dibandingkan
+### Four mechanisms compared
 
-- **A**: `kit.attach(mediaStreamTrack)` sekali (rese v0.1, T7.4).
-- **B**: wrapper `TrackProcessor` lewat `track.setProcessor()`.
-- **C**: A + auto re-attach saat event track LiveKit.
-- **D**: B + auto re-`setProcessor` saat event track LiveKit.
+- **A**: `kit.attach(mediaStreamTrack)` once (v0.1 recipe, T7.4).
+- **B**: `TrackProcessor` wrapper via `track.setProcessor()`.
+- **C**: A + auto re-attach on LiveKit track events.
+- **D**: B + auto re-`setProcessor` on LiveKit track events.
 
-Skenario per metode: S1 baseline → S2 ganti kamera → S3a mute / S3b unmute →
-S4a unpublish / S4b republish → S5 restart track. Empat run selesai
-`ALL DONE`, tanpa `ACTION ERROR`.
+Scenario per method: S1 baseline → S2 camera switch → S3a mute / S3b unmute →
+S4a unpublish / S4b republish → S5 track restart. Four runs finished `ALL DONE`,
+without `ACTION ERROR`.
 
-### Hasil teal% per screenshot
+### Teal% results per screenshot
 
-Ambang: ≥30% = efek hidup, ≈0% = efek hilang (noise UI aplikasi ≈1%).
+Threshold: ≥30% = effect alive, ≈0% = effect gone (app UI noise ≈1%).
 
 | Stage | A | B | C | D |
 |---|---|---|---|---|
@@ -269,204 +269,201 @@ Ambang: ≥30% = efek hidup, ≈0% = efek hilang (noise UI aplikasi ≈1%).
 | S4b-republish | 0,0 | 0,0 | 33,6 | 32,5 |
 | S5-restart | 0,0 | 0,0 | 33,2 | 30,1 |
 
-Catatan angka: nilai 60,3% di C/D = kamera belakang setelah switchcam (tanpa
-orang di depannya, teal mengisi lebih banyak frame). Pada S3a/S4a kamera
-berhenti, renderer menampilkan frame terakhir — teal di stage itu terutama
-mencerminkan keadaan stage sebelumnya. S3a/S4a tidak menilai mekanisme;
-penilaian ada di S2, S3b, S4b, S5.
+Number note: the 60,3% value in C/D = rear camera after switchcam (no person in
+front, teal fills more of the frame). At S3a/S4a camera stops, renderer shows the
+last frame — teal at those stages mostly reflects the previous stage's state.
+S3a/S4a do not assess the mechanism; assessment is at S2, S3b, S4b, S5.
 
-### Temuan per metode
+### Findings per method
 
-**A — efek hilang di S2, tidak pernah pulih.** Kit tetap `active` dan masih
-terpasang ke track lama; LiveKit membuat MediaStreamTrack baru saat switchcam,
-unmute, republish, dan restart (id berubah di log). Tanpa re-attach, renderer
-menampilkan frame mentah: teal 0,0% di seluruh stage sesudah S1. Republish
-bahkan memunculkan `PUBLISHED` track baru yang tidak pernah dipasangi kit.
+**A — effect lost at S2, never recovers.** Kit stays `active` and still attached
+to old track; LiveKit creates a new MediaStreamTrack on switchcam, unmute,
+republish, and restart (id changes in log). Without re-attach, renderer shows raw
+frames: teal 0,0% at all stages after S1. Republish even brings up a new
+`PUBLISHED` track never fitted with the kit.
 
-**B — efek hilang di S2; hipotesis riset source `livekit_client` terbukti.**
-Saat `restartTrack()`, LiveKit memanggil `stop()` lebih dulu →
-`PROCESSOR_destroy` → `kit.detach()` → `KIT_STATUS idle`, lalu `PROCESSOR_SET
-null`. Tidak ada yang memasang ulang → teal ≤0,7% (noise) di semua stage
-sesudah S1. Mekanisme ini ditolak.
+**B — effect lost at S2; source research hypothesis on `livekit_client` proven.**
+On `restartTrack()`, LiveKit calls `stop()` first → `PROCESSOR_destroy` →
+`kit.detach()` → `KIT_STATUS idle`, then `PROCESSOR_SET null`. Nothing
+re-attaches → teal ≤0,7% (noise) at all stages after S1. This mechanism is
+rejected.
 
-**C — efek bertahan di semua stage.** Pemulihan lewat tiga jalur event:
+**C — effect survives at all stages.** Recovery via three event paths:
 `TrackStreamUpdatedEvent` → re-attach (3×: S2, S3b, S5),
 `LocalTrackPublishedEvent` → attach (2×: setup, S4b),
-`LocalTrackUnpublishedEvent` → detach (1×: S4a, saat kamera berhenti).
-Pergantian stream memicu dua `TrackStreamUpdatedEvent` sehingga attach
-dipanggil 2× — aman (FR-06 idempoten), `KIT_STATUS` kembali `active` setiap
-kali, tanpa error. Teal ≥30% di semua stage.
+`LocalTrackUnpublishedEvent` → detach (1×: S4a, when camera stops). Stream switch
+triggers two `TrackStreamUpdatedEvent`s so attach called 2× — safe (FR-06
+idempotent), `KIT_STATUS` returns `active` each time, without error. Teal ≥30% at
+all stages.
 
-**D — efek bertahan di semua stage, dengan tumpang tindih panggilan.**
-Re-`setProcessor` pada event yang sama memulihkan efek. Pada S2 dua event
-datang bersamaan → `init`/`destroy`/`init` saling susul, tetapi state akhir
-benar: `PROCESSOR_SET MiVirtualBackgroundKit` + `KIT_STATUS active`. Mute dan
-unpublish memicu `PROCESSOR_destroy` (wajar, kamera berhenti), pemulihan
-terjadi di S3b/S4b. Teal ≥30% di semua stage.
+**D — effect survives at all stages, with overlapping calls.** Re-`setProcessor`
+on the same events restores the effect. At S2 two events arrive together →
+`init`/`destroy`/`init` chase each other, but final state is correct:
+`PROCESSOR_SET MiVirtualBackgroundKit` + `KIT_STATUS active`. Mute and unpublish
+trigger `PROCESSOR_destroy` (expected, camera stops), recovery happens at
+S3b/S4b. Teal ≥30% at all stages.
 
-### Rekomendasi mekanisme adapter
+### Adapter mechanism recommendation
 
-**Pilih C** (attach + re-attach otomatis pada event track):
+**Choose C** (attach + auto re-attach on track events):
 
-1. Memakai API inti `attach(mediaStreamTrack)` — adapter tetap tipis dan tidak
-   bergantung pada siklus `setProcessor` milik LiveKit yang terbukti membersihkan
-   processor pada `restartTrack` (bukti di B).
-2. Bertahan di seluruh tujuh stage, setara D, tanpa tumpang tindih panggilan.
-3. Satu jalur attach; detach saat unpublish menjaga siklus rapi.
+1. Uses core API `attach(mediaStreamTrack)` — adapter stays thin and does not
+   depend on LiveKit's `setProcessor` cycle, proven to clear the processor on
+   `restartTrack` (evidence in B).
+2. Survives all seven stages, equal to D, without overlapping calls.
+3. One attach path; detach on unpublish keeps cycle clean.
 
-Catatan risiko C: pemulihan setelah switchcam/mute/restart bergantung pada
-`TrackStreamUpdatedEvent` yang **internal** di `livekit_client 2.13.1` (tidak
-di-export); harness mengenalinya lewat `runtimeType.toString()`. Mitigasi:
-pencocokan nama event string + uji batas bawah/atas versi `livekit_client` di
-CI (T15.4) agar perubahan nama event langsung gagal teruji.
-`LocalTrackPublishedEvent`/`LocalTrackUnpublishedEvent` yang publik hanya
-menangani publish/unpublish, bukan switchcam/mute/restart.
+C risk note: recovery after switchcam/mute/restart depends on
+`TrackStreamUpdatedEvent` which is **internal** in `livekit_client 2.13.1` (not
+exported); harness recognizes it via `runtimeType.toString()`. Mitigation: string
+event-name matching + lower/upper bound version tests of `livekit_client` in CI
+(T15.4) so event-name changes fail tested immediately. Public
+`LocalTrackPublishedEvent`/`LocalTrackUnpublishedEvent` only handle
+publish/unpublish, not switchcam/mute/restart.
 
-D tetap alternatif bila LiveKit mengekspor event-nya atau menyediakan siklus
-processor yang aman. Untuk T15.3, skenario wajib didukung adapter: S2, S3b,
-S4b, S5.
+D remains an alternative if LiveKit exports its events or provides a safe
+processor cycle. For T15.3, scenarios the adapter must support: S2, S3b, S4b, S5.
 
-## T13.2 — Track shared dan registry replacement (11 November 2026)
+## T13.2 — Shared track and registry replacement (11 November 2026)
 
-Spike penentu apakah track `flutter_webrtc` yang tidak terikat ke video source
-processor bisa didukung penuh atau hanya bisa dideteksi (FR-19; bahan T14.1 dan
-ADR 0002 butir 4). Log dan screenshot mentah di `doc/spike-t132/{android,ios}/`.
+Spike determining whether `flutter_webrtc` tracks not bound to a video source
+processor can be fully supported or only detected (FR-19; material for T14.1 and
+ADR 0002 item 4). Raw logs and screenshots in `doc/spike-t132/{android,ios}/`.
 
-### Lingkungan
+### Environment
 
 - Android: A1 (SM-A135F, Android 14); iOS: P2 (iPhone 15, iOS 26.5).
 - `flutter_webrtc 1.6.2+hotfix.4`. Harness `example/lib/spike_t132_page.dart`
-  (tombol stage manual), log `tool/t132_log.sh`, screenshot PNG
-  `tool/t132_shot.sh`. Efek tes `ColorEffect(0xFF00E5CC)`; keputusan native
-  tercatat sebagai baris `T132| probe ...`.
+  (manual stage buttons), log `tool/t132_log.sh`, PNG screenshot
+  `tool/t132_shot.sh`. Test effect `ColorEffect(0xFF00E5CC)`; native decisions
+  recorded as `T132| probe ...` lines.
 
-### Temuan source (sebelum run)
+### Source findings (before runs)
 
-Dua jalur flutter_webrtc menyerahkan `LocalVideoTrack` yang tidak di-wiring:
+Two flutter_webrtc paths hand over `LocalVideoTrack` that are not wired:
 
-1. **Track shared — Android saja.** `getUserMedia` kedua pada kamera yang sama
-   memicu `buildSharedVideoTrack`: track baru dibuat dari `primary.videoSource`
-   tanpa `setVideoProcessor` (`GetUserMediaImpl.java`), sehingga wrapper tidak
-   pernah menerima frame. iOS tidak punya jalur ini — tiap `getUserVideo`
-   membuat chain baru (source + adapter + capturer), jadi `getUserMedia` kedua
-   berjalan mandiri.
-2. **Registry replacement — kedua platform.** Dart `stream.getMediaTracks()` →
-   native `mediaStreamGetTracks` mengganti entri `localTracks` dengan wrapper
-   baru tanpa wiring (Android: `new LocalVideoTrack(track)` tanpa
-   `setVideoProcessor`; iOS: `initWithTrack:` tanpa adapter). `addProcessor`
-   pada wrapper pengganti = no-op senyap: attach sukses, efek tidak pernah
-   jalan. Ini akar masalah yang dulu ditemukan di T7.4.
+1. **Shared track — Android only.** Second `getUserMedia` on same camera triggers
+   `buildSharedVideoTrack`: new track created from `primary.videoSource` without
+   `setVideoProcessor` (`GetUserMediaImpl.java`), so wrapper never receives
+   frames. iOS has no such path — each `getUserVideo` builds a new chain (source +
+   adapter + capturer), so second `getUserMedia` runs independently.
+2. **Registry replacement — both platforms.** Dart `stream.getMediaTracks()` →
+   native `mediaStreamGetTracks` replaces `localTracks` entries with new unwired
+   wrappers (Android: `new LocalVideoTrack(track)` without `setVideoProcessor`;
+   iOS: `initWithTrack:` without adapter). `addProcessor` on the replacement
+   wrapper = silent no-op: attach succeeds, effect never runs. This is the root
+   problem found earlier at T7.4.
 
-### Mekanisme yang diuji: deteksi + redirect di jalur attach kit
+### Mechanism tested: detection + redirect in kit attach path
 
-Tanpa fork `flutter_webrtc`, attach memilih objek yang benar-benar memproses
-frame:
+Without forking `flutter_webrtc`, attach picks the object that actually processes
+frames:
 
-- **Android** (`SharedTrackProbe.kt`): mencapai `VideoSource.videoProcessor`
-  (field privat; lewat dua field privat flutter_webrtc + `getCapturerInfo`).
-  Identitas wrapper registry dibandingkan dengan processor source — sama →
-  direct; berbeda → pasang di objek milik source (mencakup shared, replacement,
-  dan normal dalam satu jalur). Reflection gagal → degradasi ke perilaku lama
-  dengan log `reason=reflection-failed` (bukan crash).
-- **iOS**: cek `track.processing` lewat KVC → direct; nil → redirect ke
-  `videoCapturer?.delegate`, lalu fallback `retainedAdapter`. Adapter disimpan
-  kit lintas detach (`retainedAdapter`): wrapper asli adalah pemilik kuat
-  tunggal adapter (`capturer.delegate` lemah), sehingga tanpa penyimpanan ini
-  `getMediaTracks()` + detach mematikan rantai kamera.
+- **Android** (`SharedTrackProbe.kt`): reaches `VideoSource.videoProcessor`
+  (private field; via two private flutter_webrtc fields + `getCapturerInfo`).
+  Registry wrapper identity compared to source processor — same → direct;
+  different → attach to source-owned object (covers shared, replacement, and
+  normal in one path). Reflection fails → degrade to old behavior with
+  `reason=reflection-failed` log (not a crash).
+- **iOS**: check `track.processing` via KVC → direct; nil → redirect to
+  `videoCapturer?.delegate`, then fallback to `retainedAdapter`. Kit stores
+  adapter across detach (`retainedAdapter`): the original wrapper is the sole
+  strong owner of the adapter (`capturer.delegate` is weak), so without this
+  storage `getMediaTracks()` + detach kills the camera chain.
 
-### Hasil teal% (5 stage × 2 platform)
+### Teal% results (5 stages × 2 platforms)
 
 | Stage | Android | iOS |
 |---|---|---|
 | S1-baseline | 33,4 | 39,8 |
-| S2-shared (render track2, kit di track1) | 34,0 | 0,0 |
+| S2-shared (render track2, kit on track1) | 34,0 | 0,0 |
 | S3-attach-shared | 35,6 | 37,8 |
 | S4-replace | 37,6 | 37,9 |
 | S5-stop-primary | 38,3 | 36,6 |
 
-Interpretasi:
+Interpretation:
 
-- **S1 dan S3–S5 hijau di kedua platform**: attach, redirect ke shared,
-  redirect setelah registry replacement, dan promosi kamera (primary distop)
-  semuanya mempertahankan efek. Log Android: S3/S4
-  `action=redirect target=<track1> shared=true`; log iOS: S4
-  `action=redirect-adapter` dan `Frame pass` berlanjut (frame mengalir lagi).
-- **S2 Android 34,0%**: efek dari attach track1 merembet ke track shared di
-  level source — frame diproses sebelum distribusi ke seluruh track dari source
-  yang sama. S3 membuktikan attach langsung ke track shared pun berhasil.
-- **S2 iOS 0,0%**: `getUserMedia` kedua = chain kamera mandiri; kit di track1
-  tidak memengaruhi track2. Perilaku benar (bukan bug) — iOS tidak mengenal
-  konsep track shared Android; solusinya attach biasa (S3, teal 37,8%).
-- Tidak ada `ERROR`/exception di log kedua platform; semua stage `ALL DONE`.
+- **S1 and S3–S5 green on both platforms**: attach, redirect to shared, redirect
+  after registry replacement, and camera promotion (primary stopped) all
+  preserve the effect. Android log: S3/S4
+  `action=redirect target=<track1> shared=true`; iOS log: S4
+  `action=redirect-adapter` and `Frame pass` continues (frames flow again).
+- **S2 Android 34,0%**: effect from attaching track1 spills to shared track at
+  source level — frames processed before distribution to all tracks from the
+  same source. S3 proves direct attach to the shared track also works.
+- **S2 iOS 0,0%**: second `getUserMedia` = independent camera chain; kit on
+  track1 does not affect track2. Correct behavior (not a bug) — iOS has no
+  Android shared-track concept; solution is normal attach (S3, teal 37,8%).
+- No `ERROR`/exception in either platform's log; all stages `ALL DONE`.
 
-### Bug yang ditemukan selama spike (iOS, run pertama)
+### Bug found during spike (iOS, first run)
 
-Run pertama iOS: S4/S5 gagal — teal 0%, `Frame pass` berhenti total, kamera
-beku (diff gambar S4-vs-S5 = 0,6). Dua penyebab:
+First iOS run: S4/S5 failed — teal 0%, `Frame pass` stopped entirely, camera
+frozen (S4-vs-S5 image diff = 0,6). Two causes:
 
-1. Adapter dealloc saat detach setelah registry replacement → rantai kamera
-   mati sekaligus target redirect hilang. Fix: `retainedAdapter`.
-2. Baris probe memakai `NSLog` yang tidak ke-capture oleh `flutter run | tee`
-   → bukti hilang. Fix: ganti `print()`.
+1. Adapter deallocated on detach after registry replacement → camera chain dies
+   and redirect target lost at once. Fix: `retainedAdapter`.
+2. Probe line used `NSLog` not captured by `flutter run | tee` → evidence lost.
+   Fix: replace with `print()`.
 
-Run kedua dengan fix: S4 `action=redirect-adapter`, teal 37,9%, `Frame pass`
-lanjut sampai `ALL DONE`.
+Second run with fix: S4 `action=redirect-adapter`, teal 37,9%, `Frame pass`
+continues until `ALL DONE`.
 
-### Keputusan
+### Decision
 
-**Didukung penuh di kedua platform** (FR-19 opsi b), tanpa fork:
+**Fully supported on both platforms** (FR-19 option b), without fork:
 
-- **Android**: redirect berbasis identitas `VideoSource.videoProcessor`
-  menangani shared, replacement, dan kasus normal dalam satu jalur. Bukti:
-  teal ≥33% di semua stage + probe log.
-- **iOS**: tidak ada kasus shared; replacement ditangani deteksi `processing`
-  nil + redirect adapter, dengan `retainedAdapter` menahan siklus hidup
-  adapter. Bukti: teal ≥37% di S1/S3–S5 + `Frame pass` berlanjut.
-- **Fallback aman**: reflection Android gagal atau adapter iOS tidak ditemukan
-  → perilaku lama plus baris log jelas, tidak pernah crash.
+- **Android**: identity-based `VideoSource.videoProcessor` redirect handles
+  shared, replacement, and normal cases in one path. Evidence: teal ≥33% at all
+  stages + probe log.
+- **iOS**: no shared case; replacement handled by nil `processing` detection +
+  adapter redirect, with `retainedAdapter` holding adapter lifetime. Evidence:
+  teal ≥37% at S1/S3–S5 + `Frame pass` continues.
+- **Safe fallback**: Android reflection fails or iOS adapter not found → old
+  behavior plus clear log line, never crashes.
 
-Untuk T14.1: jadikan kedua jalur ini implementasi produksi — pindahkan probe ke
-lokasi permanen, tambah unit test (mock reflection gagal, `processing` nil),
-pertahankan regression test jalur encoder. Di luar cakupan spike: skenario
-multi-kamera (adapter cache dipakai lintas track berbeda) — v0.1 tetap asumsi
-kamera tunggal per aplikasi.
+For T14.1: make both paths the production implementation — move probes to
+permanent location, add unit tests (mock reflection failure, `processing` nil),
+keep encoder path regression tests. Out of spike scope: multi-camera scenarios
+(adapter cache used across different tracks) — v0.1 keeps the single-camera-per-app
+assumption.
 
-## T13.3 — Temporal smoothing mask (11 November 2026)
+## T13.3 — Mask temporal smoothing (11 November 2026)
 
-Spike perbandingan blend temporal mask antar run segmentasi (FR-20; bahan
-T14.2/T14.3 dan ADR 0002 butir 5). Log mentah di `doc/spike-t133/`.
+Spike comparing temporal mask blending across segmentation runs (FR-20; material
+for T14.2/T14.3 and ADR 0002 item 5). Raw logs in `doc/spike-t133/`.
 
-### Lingkungan
+### Environment
 
 - Android: A1 (SM-A135F, Android 14); iOS: iPhone 15 (iOS 26.5).
-- Harness `example/lib/spike_t133_page.dart`: 6 varian × 2 stage, tiap stage
-  5 detik, skrip gerakan sama tiap varian (`still` = diam, `motion` = gerak
-  cepat). Log `tool/t133_log.sh` (Android) dan `flutter run | tee` (iOS);
-  agregasi `tool/t133_metrics.py`. Efek tes `ColorEffect(0xFF00E5CC)`.
-- Data: 883 mask terurai dari dua platform, 26 mask warmup dibuang, semua 13
-  stage `SETTLED` + `ALL DONE`, tanpa error.
+- Harness `example/lib/spike_t133_page.dart`: 6 variants × 2 stages, each stage
+  5 seconds, same motion script per variant (`still` = still, `motion` = fast
+  motion). Log `tool/t133_log.sh` (Android) and `flutter run | tee` (iOS);
+  aggregation `tool/t133_metrics.py`. Test effect `ColorEffect(0xFF00E5CC)`.
+- Data: 883 masks decomposed from two platforms, 26 warmup masks discarded, all
+  13 stages `SETTLED` + `ALL DONE`, without error.
 
-### Varian dan metrik
+### Variants and metrics
 
-Varian yang dibandingkan:
+Variants compared:
 
-- `none` — mask apa adanya (baseline v0.1).
+- `none` — mask as-is (v0.1 baseline).
 - `ema` — `out = prev*s + raw*(1-s)`, s = 0.3 / 0.5 / 0.7.
-- `adaptive` — EMA yang menurunkan bobot riwayat menuju 0 saat mask berubah
-  cepat (inovasi `d` melewati `D0 = 0.06`), agar gerak cepat menarik mask segar
-  dan tidak meninggalkan ghosting.
+- `adaptive` — EMA that lowers history weight toward 0 when mask changes fast
+  (innovation `d` exceeds `D0 = 0.06`), so fast motion pulls fresh mask and
+  leaves no ghosting.
 
-Satu baris `T133|` per mask membawa: `rev` (piksel yang bolak-balik kelas
-A→B→A antar tiga mask = kedipan tepi; gerak berkelanjutan bergerak satu arah
-dan tidak dihitung), `chg` (piksel berubah kelas vs mask sebelumnya), `d`
-(inovasi mask segar vs yang tampil, %), `lag` (jarak mask halus vs mask segar
-%, proxy ghosting), `us`, `fps`. Mask iOS 640×480 (307200 px) dan Android
-256×192 (49152 px), sehingga angka absolut hanya dibandingkan dalam-platform;
-lintas platform dibandingkan pola persentasenya.
+One `T133|` line per mask carries: `rev` (pixels flipping class A→B→A across
+three masks = edge flicker; continuous motion moves one direction and is not
+counted), `chg` (pixels changing class vs previous mask), `d` (fresh mask
+innovation vs displayed, %), `lag` (distance of smoothed mask vs fresh mask %,
+ghosting proxy), `us`, `fps`. iOS masks 640×480 (307200 px) and Android 256×192
+(49152 px), so absolute numbers are only compared within-platform; cross-platform
+compares percentage patterns.
 
-### Hasil — A1 (Android)
+### Results — A1 (Android)
 
-| Varian | rev still | Δ kedipan | rev motion | Δ kedipan | lag motion | fps |
+| Variant | rev still | Δ flicker | rev motion | Δ flicker | lag motion | fps |
 |---|---|---|---|---|---|---|
 | none | 69,6 | baseline | 714,5 | baseline | 0,0% | 24,7–24,8 |
 | ema 0,3 | 61,1 | +12% | 365,5 | +49% | 1,54% | 24,8–25,2 |
@@ -475,13 +472,13 @@ lintas platform dibandingkan pola persentasenya.
 | adaptive 0,5 | 46,8 | +33% | 643,1 | +10% | 0,41% | 28,0–29,1 |
 | adaptive 0,7 | 20,5 | +71% | 519,8 | +27% | 0,45% | 25,3–25,9 |
 
-¹ Stage `still` varian ini terkontaminasi: `d = 3,64%` vs ~0,5% stage lain
-berarti subjek bergerak saat stage berjalan. Baris ini dikecualikan dari
-rekomendasi.
+¹ `still` stage of this variant contaminated: `d = 3,64%` vs ~0,5% of other
+stages means subject moved during the stage. This row is excluded from
+recommendation.
 
-### Hasil — iPhone 15 (iOS)
+### Results — iPhone 15 (iOS)
 
-| Varian | rev still | Δ kedipan | rev motion | Δ kedipan | lag motion | fps |
+| Variant | rev still | Δ flicker | rev motion | Δ flicker | lag motion | fps |
 |---|---|---|---|---|---|---|
 | none | 332,4 | baseline | 3017,8 | baseline | 0,0% | 30,0 |
 | ema 0,3 | 343,4 | −3% | 1704,0 | +44% | 1,12% | 30,0 |
@@ -490,104 +487,103 @@ rekomendasi.
 | adaptive 0,5 | 176,0 | +47% | 1280,9 | +58% | 0,36% | 30,0 |
 | adaptive 0,7 | 93,7 | +72% | 2105,8 | +30% | 0,51% | 30,0 |
 
-Δ = pengurangan kedipan relatif baseline, positif = lebih baik.
+Δ = flicker reduction relative to baseline, positive = better.
 
-### Interpretasi
+### Interpretation
 
-1. **Pola identik di kedua platform** — metriknya valid.
-2. **Masih diam, perlu s ≥ 0,5.** Varian 0,3 tidak efektif (−3% s/d +12%,
-   dalam noise). s = 0,7 memotong kedipan 71–79% saat diam.
-3. **EMA tetap menimbulkan ghosting saat gerak.** `lag` naik seiring s:
-   ema 0,7 → 3,3–6,4% (siluet tertinggal, terlihat mata). Adaptive menjaga
-   `lag` ≤ 0,5% di seluruh stage — `D0 = 0,06` bekerja sesuai desain: gerak
-   cepat melepas smoothing.
-4. **Target −50% (PRD §7) hanya tercapai saat diam.** Adaptive saat motion
-   hanya −27..30%: `d` rata-rata saat gerak 4–9% melampaui `D0 = 6%`, sehingga
-   adaptive nyaris nonaktif persis saat dibutuhkan. Hutang tuning untuk T14.2:
-   naikkan `D0` ke ~0,10–0,12 lalu ukur ulang (trade-off `lag` vs kedipan).
-5. **Tidak ada regresi fps** — iOS terkunci 30,0 di semua varian; A1 24,7–29,1
-   tanpa pola penurunan.
-6. **Biaya per mask.** Blend smoothing sendiri tidak terukur: `us` varian
-   `none` (27–32 ms di A1, 95–119 ms di iOS) sama dengan varian EMA dalam
-   noise — angka itu didominasi instrumentasi metrik (3 pass per mask) dan
-   build debug; GPU tidak tersentuh karena blend di CPU. Angka produksi
-   (release, tanpa metrik) jauh di bawah ini. `us` iOS naik monoton sepanjang
-   run (94→119 ms) = thermal/build debug, bukan efek varian. Mask rate A1
-   ~3 Hz (interval adaptif); iOS tanpa timestamp di tee, tidak dihitung.
+1. **Identical pattern on both platforms** — metric is valid.
+2. **While still, need s ≥ 0,5.** The 0,3 variant ineffective (−3% to +12%,
+   within noise). s = 0,7 cuts flicker 71–79% when still.
+3. **EMA still causes ghosting during motion.** `lag` rises with s: ema 0,7 →
+   3,3–6,4% (silhouette lags, visible to eye). Adaptive keeps `lag` ≤ 0,5% at all
+   stages — `D0 = 0,06` works as designed: fast motion releases smoothing.
+4. **−50% target (PRD §7) only reached when still.** Adaptive during motion only
+   −27..30%: average `d` during motion 4–9% exceeds `D0 = 6%`, so adaptive is
+   nearly inactive exactly when needed. Tuning debt for T14.2: raise `D0` to
+   ~0,10–0,12 then re-measure (trade-off `lag` vs flicker).
+5. **No fps regression** — iOS locked at 30,0 in all variants; A1 24,7–29,1 with
+   no declining pattern.
+6. **Cost per mask.** Smoothing blend itself not measured: `us` of `none` variant
+   (27–32 ms on A1, 95–119 ms on iOS) same as EMA variants within noise — those
+   numbers dominated by metric instrumentation (3 passes per mask) and debug
+   build; GPU untouched because blend on CPU. Production numbers (release,
+   without metrics) far below this. iOS `us` rises monotonically across run
+   (94→119 ms) = thermal/debug build, not variant effect. A1 mask rate ~3 Hz
+   (adaptive interval); iOS without timestamp in tee, not counted.
 
-### Keputusan
+### Decision
 
-**Parameter bawaan yang disarankan untuk v0.2: mode `adaptive`,
-`maskTemporalSmoothing = 0,7`, `D0 = 0,06`.** Alasan: kedipan saat diam
-−71% (A1) dan −72% (iOS) — lolos target −50%; `lag` ≤ 0,5% di semua stage
-(tanpa ghosting terlihat); fps tanpa regresi. Angka 0,4 pada contoh draf PRD
-§8.3 perlu disesuaikan dengan angka spike ini.
+**Recommended default parameters for v0.2: `adaptive` mode,
+`maskTemporalSmoothing = 0,7`, `D0 = 0,06`.** Reason: flicker when still −71% (A1)
+and −72% (iOS) — passes −50% target; `lag` ≤ 0,5% at all stages (no visible
+ghosting); fps without regression. The 0,4 figure in PRD §8.3 draft example needs
+adjusting to these spike numbers.
 
-Catatan untuk T14.2:
+Notes for T14.2:
 
-- `D0 = 0,06` terlalu konservatif untuk stage motion (temuan 4) — naikkan ke
-  ~0,10–0,12 dan ukur ulang sebelum menyerah pada target −50% gerak.
-- Pindahkan `MaskTemporalSmoother` dari folder `spike/` ke lokasi produksi,
-  ekspos `maskTemporalSmoothing` di `BackgroundQuality` (validasi 0..1;
-  nilai 0 = identik v0.1, terbukti `none` = baseline persis), pertahankan
-  logika reset saat ganti stage/efek.
-- Klaim −50% resmi perlu klip uji tetap (PRD §7), bukan gerakan manual satu
-  operator seperti run ini — run ini indikatif.
-- Di luar cakupan T13.3: mask iOS berukuran penuh 640×480 — `segmentationWidth`
-  tampak tidak mengecilkan mask di iOS; periksa saat T14.2/T14.3.
+- `D0 = 0,06` too conservative for motion stage (finding 4) — raise to ~0,10–0,12
+  and re-measure before giving up on −50% motion target.
+- Move `MaskTemporalSmoother` from `spike/` folder to production location, expose
+  `maskTemporalSmoothing` in `BackgroundQuality` (validation 0..1; value 0 =
+  identical to v0.1, proven `none` = exact baseline), keep reset logic on
+  stage/effect change.
+- Official −50% claim needs fixed test clip (PRD §7), not manual motion by one
+  operator like this run — this run is indicative.
+- Out of T13.3 scope: iOS mask is full size 640×480 — `segmentationWidth` appears
+  not to shrink the mask on iOS; check during T14.2/T14.3.
 
-## T13.4 — Strategi segmentasi untuk perangkat lambat (11 November 2026)
+## T13.4 — Segmentation strategy for slow devices (11 November 2026)
 
-Spike penentu FR-22: interval adaptif yang lebih baik, delegate GPU MediaPipe,
-dan varian model yang tersedia — semua diukur di A1 (kelas mid tidak ada,
-T12.3; Android-only karena masalahnya perangkat 32-bit). Log mentah di
-`doc/spike-t134/`: `android.log` = run5 final; `run1`/`run2`/`run4` = arsip
-bukti crash GPU dan bench parsial.
+Spike determining FR-22: better adaptive interval, MediaPipe GPU delegate, and
+available model variants — all measured on A1 (no mid class, T12.3; Android-only
+because the issue is a 32-bit device). Raw logs in `doc/spike-t134/`:
+`android.log` = final run5; `run1`/`run2`/`run4` = archive of GPU crash evidence
+and partial bench.
 
-### Lingkungan
+### Environment
 
-- A1 (SM-A135F, Android 14, 32-bit), build debug `flutter run`.
-- Harness `example/lib/spike_t134_page.dart` + `SpikeT134Bench`:5 frame kamera
-  ditangkap offline lalu tiap config diuji pada frame yang sama — 2 pass warmup
-  + 4 pass × 5 frame = 20 sampel, budget 75 s per config, tick progres per pass
-  (`BENCH_TICK`). Latensi terisolasi dari pipeline live (efek dimatikan).
-- Model pembanding di-push `tool/t134_push_models.sh` ke
-  `/data/local/tmp/t134/`: `selfie_segmenter_landscape` (144×256, float16,
-  250 KB) dan `selfie_multiclass_256x256` (float32, 16,4 MB).
-- Kualitas = agreement + IoU mask biner vs baseline `cpu-square-256` pada frame
-  yang sama. Background per frame = mayoritas border ring (encoding selfie
-  bg=255 dan multiclass bg=0 sama-sama terbaca tanpa pengetahuan model).
-- Strategi interval diuji live, 8 detik per varian, skrip gerakan sama
-  (diam, kamera ke orang). Satu run tunggal untuk seluruh tabel.
+- A1 (SM-A135F, Android 14, 32-bit), debug build `flutter run`.
+- Harness `example/lib/spike_t134_page.dart` + `SpikeT134Bench`:5 camera frames
+  captured offline then each config tested on the same frames — 2 warmup passes +
+  4 passes × 5 frames = 20 samples, 75 s budget per config, progress tick per
+  pass (`BENCH_TICK`). Latency isolated from live pipeline (effect disabled).
+- Comparison models pushed by `tool/t134_push_models.sh` to
+  `/data/local/tmp/t134/`: `selfie_segmenter_landscape` (144×256, float16, 250 KB)
+  and `selfie_multiclass_256x256` (float32, 16,4 MB).
+- Quality = agreement + IoU of binary mask vs `cpu-square-256` baseline on same
+  frame. Background per frame = border ring majority (selfie encoding bg=255 and
+  multiclass bg=0 both readable without model knowledge).
+- Interval strategy tested live, 8 seconds per variant, same motion script
+  (still, camera to person). Single run for whole table.
 
-### Tabel latensi (median/p95 ms, run5)
+### Latency table (median/p95 ms, run5)
 
 | Config | med | p95 | Δ med | Model bytes | n |
 |---|---|---|---|---|---|
-| cpu-square-256 (baseline v0.1) | 133,1 | 212,2 | – | 249.537 | 20 |
+| cpu-square-256 (v0.1 baseline) | 133,1 | 212,2 | – | 249.537 | 20 |
 | cpu-square-144 | 121,6 | 147,1 | −11,5 (−9%) | 249.537 | 20 |
 | **cpu-landscape-256** | **87,9** | 144,1 | **−45,2 (−34%)** | 250.177 | 20 |
 | cpu-multiclass-256 | 2.430,5 | 2.492,1 | +2.297 (+1.729%) | 16.371.837 | 20 |
 
-Konsisten antar run: landscape 84,2 (run4) vs 87,9 (run5); square-256
-127,9 / 133,1. Pola: yang menurunkan latensi adalah **bentuk input model** —
-model landscape memproses ~37k piksel input alih-alih ~65k (resize ke
-256×256), sedangkan mengecilkan bitmap readback hanya memotong preprocessing
-(−9%). Ini sejalan T0.6 (arsitektur mendominasi, bukan resolusi bitmap).
+Consistent across runs: landscape 84,2 (run4) vs 87,9 (run5); square-256 127,9 /
+133,1. Pattern: what lowers latency is **model input shape** — landscape model
+processes ~37k input pixels instead of ~65k (resize to 256×256), while shrinking
+readback bitmap only cuts preprocessing (−9%). This aligns with T0.6 (architecture
+dominates, not bitmap resolution).
 
-### Tabel kualitas (vs baseline cpu-square-256,5 frame identik)
+### Quality table (vs cpu-square-256 baseline, 5 identical frames)
 
-| Config | agree % | IoU % | bg | Catatan |
+| Config | agree % | IoU % | bg | Notes |
 |---|---|---|---|---|
-| cpu-square-144 | 99,3 | 98,0 | 255 | turunan readback kecil pengaruhnya |
-| **cpu-landscape-256** | **98,9** | **96,8** | 255 | model berbeda, siluet nyaris identik |
-| cpu-multiclass-256 | 99,7 | 99,0 | 0 | person = kelas ≠0 (hist: bg + kelas 1/3/4) |
+| cpu-square-144 | 99,3 | 98,0 | 255 | small readback derivative has little effect |
+| **cpu-landscape-256** | **98,9** | **96,8** | 255 | different model, near-identical silhouette |
+| cpu-multiclass-256 | 99,7 | 99,0 | 0 | person = class ≠0 (hist: bg + class 1/3/4) |
 
-Multiclass justru membuktikan biner `selfie` sudah cukup: person hasil
-komposisi kelas multiclass99,7% sama dengan mask binary — kaya kelas tidak
-memberi nilai tambah untuk background replace.
+Multiclass actually proves binary `selfie` is enough: person from multiclass class
+composition 99,7% matches binary mask — rich classes add no value for background
+replace.
 
-### Strategi interval (live,8 s per varian)
+### Interval strategy (live, 8 s per variant)
 
 | Strategy | masks | gap mean | gap p50 | age p50 | inf mean | fps mean |
 |---|---|---|---|---|---|---|
@@ -595,53 +591,50 @@ memberi nilai tambah untuk background replace.
 | **always** | 52 | **158** | **158** | 22 | 129 | 24,9 |
 | budget | 20 | 405 | 404 | 22 | 127 | 24,9 |
 
-- `always` menggandakan kesegaran mask (158 vs 318 ms) **tanpa biaya fps**
-  (identik 24,9–25,0). Duty cycle worker naik dari ~40% ke ~82% — itulah
-  satu-satunya biaya, dan baterai/thermal tidak diukur di spike ini.
-- `current` = mapping berbasis hitungan frame seperti v0.1; cadence-nya
-  bergantung fps (fps turun → interval naik → mask makin basi).
-- `budget` (trigger saat umur mask > max(200 ms, 2×inference)) justru
-  paling lambat: menunggu penuh sejak mask siap, lalu inference lagi
-  → cadence = budget + inference. Paling basi dengan alasan hemat daya
-  yang tidak terukur — nilainya tidak jelas.
+- `always` doubles mask freshness (158 vs 318 ms) **at no fps cost** (identical
+  24,9–25,0). Worker duty cycle rises from ~40% to ~82% — that is the only cost,
+  and battery/thermal not measured in this spike.
+- `current` = frame-count-based mapping like v0.1; its cadence depends on fps
+  (fps drops → interval rises → mask gets staler).
+- `budget` (trigger when mask age > max(200 ms, 2×inference)) is actually slowest:
+  waits fully from mask ready, then infers again → cadence = budget + inference.
+  Stalest with unmeasured power-saving rationale — value unclear.
 
-### Keputusan
+### Decision
 
-1. **Model: ganti ke `selfie_segmenter_landscape`** (bahan T14.2/T14.5 +
-   ADR 0002): −34% latensi, kualitas setara (98,9% / IoU 96,8%), ukuran
-   identik 250 KB, bentuk input native cocok dengan frame kamera landscape.
-   Kombinasi landscape + readback 144 tidak diuji — uraikan di T14.5.
-2. **Delegate GPU: ditolak.** SIGABRT di3 run: run1 (tanpa condition),
-   run2 dan run5 (setelah `detach` — segmenter produksi sudah tertutup),
-   identik:
+1. **Model: switch to `selfie_segmenter_landscape`** (material for T14.2/T14.5 +
+   ADR 0002): −34% latency, equivalent quality (98,9% / IoU 96,8%), identical
+   size 250 KB, native input shape matches landscape camera frames. Landscape +
+   readback 144 combination not tested — detail in T14.5.
+2. **GPU delegate: rejected.** SIGABRT in 3 runs: run1 (without condition), run2
+   and run5 (after `detach` — production segmenter already closed), identical:
    `Abort message: 'image_frame.cc:102] Check failed: ImageFormat::UNKNOWN != format_ (0 vs. 0)'`,
    stack `TaskRunner → ImageSegmenter.convertToTaskResult →
-   PacketGetter.nativeGetImageWidth`. Kegagalan konversi hasil GPU →
-   `abort()` native yang tak bisa ditangkap, independen dari segmenter lain.
-3. **Multiclass: ditolak** —2.430 ms per mask (18× baseline), init 835 ms,
-   ukuran16,4 MB (66×). Angka kualitas99,7% hanya membuktikan cukup pakai
-   binary selfie.
-4. **Strategi: `budget` ditolak** (paling basi,405 ms). **`always`
-   kandidat default** (FR-22/FR-20) dengan syarat baterai dan thermal diukur
-   di benchmark v0.2 (T17.1) sebelum dikunci — duty cycle82% berpotensi
-   panas/baterai pada sesi panjang. Selama itu, `current` (v0.1) tetap
-   baseline yang aman karena FR-12 tetap menjaga.
-5. **Readback width144 ditolak** sebagai lever utama (−9%, kualitas turun
-   sedikit lebih banyak per ms yang dihemat).
+   PacketGetter.nativeGetImageWidth`. GPU result conversion failure → uncatchable
+   native `abort()`, independent of other segmenters.
+3. **Multiclass: rejected** —2.430 ms per mask (18× baseline), 835 ms init,
+   size16,4 MB (66×). Quality figure99,7% only proves binary selfie is enough.
+4. **Strategy: `budget` rejected** (stalest, 405 ms). **`always` default
+   candidate** (FR-22/FR-20) provided battery and thermal are measured in v0.2
+   benchmark (T17.1) before locking — 82% duty cycle risks heat/battery in long
+   sessions. Meanwhile, `current` (v0.1) remains safe baseline because FR-12
+   still guards.
+5. **Readback width144 rejected** as main lever (−9%, quality drops slightly more
+   per ms saved).
 
-### Temuan selama spike (bug harness, sudah diperbaiki + regression test)
+### Findings during spike (harness bugs, fixed + regression tests)
 
-- TFLite menolak heap `ByteBuffer` (`setModelAssetBuffer`) → `allocateDirect`
-  + `flip()`; tanpa ini config landscape/multiclass gagal load di run2.
-- Heuristik latar4-sudut salah saat subjek menutup dua sudut bawah (baseline
-  run2 terbaca `bg=0`, terbalik) → deteksi mayoritas **border ring**; regression
-  test `backgroundValue_survivesPersonCoveringTwoCorners`.
-- Crash GPU di tengah loop bench memotong semua row berikutnya (run1) →
-  GPU dipindah ke stage terakhir `gpu-probe` + `detach` lebih dulu; detach
-  terbukti bukan akar masalah (run2/run5 tetap crash).
-- Model lambat terlihat seperti hang (run3:39 s tanpa baris) → tick per pass
-  + detik berjalan di UI + budget75 s dengan `part=<p>/<iters>` parsial.
+- TFLite rejects heap `ByteBuffer` (`setModelAssetBuffer`) → `allocateDirect` +
+  `flip()`; without this landscape/multiclass configs fail to load in run2.
+- 4-corner background heuristic wrong when subject covers two bottom corners
+  (run2 baseline read `bg=0`, inverted) → **border ring** majority detection;
+  regression test `backgroundValue_survivesPersonCoveringTwoCorners`.
+- GPU crash mid bench loop cut all subsequent rows (run1) → GPU moved to last
+  stage `gpu-probe` + `detach` first; detach proven not root cause (run2/run5
+  still crash).
+- Slow model looked like hang (run3:39 s without a line) → tick per pass + running
+  seconds in UI + 75 s budget with partial `part=<p>/<iters>`.
 
-Untuk T14.2/T14.5: terapkan model landscape, pertimbangkan `always` setelah
-T17.1, dan uji combo landscape + readback144. Untuk ADR 0002: kutip tiga
-angka penolakan (GPU abort, multiclass2.430 ms/16,4 MB, budget405 ms).
+For T14.2/T14.5: apply landscape model, consider `always` after T17.1, and test
+landscape + readback144 combo. For ADR 0002: cite three rejection figures (GPU
+abort, multiclass2.430 ms/16,4 MB, budget405 ms).
