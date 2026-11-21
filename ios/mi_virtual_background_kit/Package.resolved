@@ -5,8 +5,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/google-ai-edge/mediapipe",
       "state" : {
-        "branch" : "master",
-        "revision" : "68392c4d368d14186566256d80067d8fc146f5c9"
+        "revision" : "1b9800ed7baddd397b888eaaaf0c841fe0358241"
       }
     }
   ],

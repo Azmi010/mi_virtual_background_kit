@@ -4,7 +4,14 @@ During 0.x, changes that break consumer code (a new subclass of
 `sealed class VirtualBackgroundEffect`, a new error code on
 `BackgroundException`) are allowed in a **minor** release and the changelog
 entry starts with **Breaking:**. New `BackgroundQuality` fields are non-breaking
-as long as they have defaults that preserve the previous behavior. See ADR 0002 §9.
+as long as they have defaults that preserve the previous behavior.
+
+## Unreleased
+
+* iOS: pin the MediaPipe Swift Package dependency to the v1.2.3 revision
+  instead of the moving `master` branch, so consumer builds resolve the
+  same MediaPipe code every time. A version tag cannot be used because
+  MediaPipe declares `unsafeFlags` in its manifest.
 
 ## 0.2.1
 

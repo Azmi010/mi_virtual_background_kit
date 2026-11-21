@@ -17,7 +17,8 @@ let package = Package(
         // A hardcoded version breaks consumers that resolve another version.
         .package(name: "flutter_webrtc", path: "../flutter_webrtc"),
         .package(name: "FlutterFramework", path: "../FlutterFramework"),
-        .package(url: "https://github.com/google-ai-edge/mediapipe", branch: "master")
+        // Version tag forbidden: MediaPipe uses unsafeFlags (-all_load); SPM requires branch/revision.
+        .package(url: "https://github.com/google-ai-edge/mediapipe", revision: "1b9800ed7baddd397b888eaaaf0c841fe0358241")
     ],
     targets: [
         .target(
