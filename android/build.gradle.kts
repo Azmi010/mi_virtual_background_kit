@@ -79,7 +79,7 @@ dependencies {
     // libwebrtc is pulled in by flutter_webrtc with `implementation`, so it is not on
     // this module's compile classpath. Declare it directly to compile against
     // org.webrtc.* types. Must stay in sync with the flutter_webrtc version.
-    implementation("io.github.webrtc-sdk:android:150.7871.01")
+    implementation("io.github.webrtc-sdk:android:150.7871.04")
     // Spike T0.6: segmentation engine candidates.
     implementation("com.google.mediapipe:tasks-vision:0.10.20")
     implementation("com.google.mediapipe:tasks-core:0.10.20")
