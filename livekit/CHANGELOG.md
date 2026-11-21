@@ -1,6 +1,10 @@
 ## Unreleased
 
-* **Breaking:** raise the minimum SDK to Dart 3.10.0 and Flutter 3.38.0. These are the real floors of `livekit_client 2.13.1` and newer. The previous declaration (`^3.6.0` / `>=3.27.0`) let apps resolve with an SDK that cannot install the adapter's dependency. Apps already on Dart 3.10 and Flutter 3.38 need no code change.
+* **Breaking:** raise the minimum SDK to Dart 3.10.0 and Flutter 3.38.0.
+  These are the real floors of `livekit_client 2.13.1` and newer. The previous
+  declaration (`^3.6.0` / `>=3.27.0`) let apps resolve with an SDK that cannot
+  install the adapter's dependency. Apps already on Dart 3.10 and Flutter 3.38
+  need no code change.
 
 ## 0.2.0
 
