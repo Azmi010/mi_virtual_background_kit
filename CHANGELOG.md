@@ -13,6 +13,10 @@ as long as they have defaults that preserve the previous behavior.
   tested version range. The previous `150.7871.01` declaration did not match
   the version Gradle resolves when both are on the classpath. This is not a
   breaking change; no public API changes.
+* iOS: bound the CocoaPods `MediaPipeTasksVision` dependency to `0.10.20`,
+  matching the Android MediaPipe pin. Previously CocoaPods resolved whatever
+  version was newest. The Swift Package stays on the v1.2.3 revision because
+  no 1.2.3 pod exists. This is not a breaking change; no public API changes.
 * iOS: pin the MediaPipe Swift Package dependency to the v1.2.3 revision
   instead of the moving `master` branch, so consumer builds resolve the
   same MediaPipe code every time. A version tag cannot be used because

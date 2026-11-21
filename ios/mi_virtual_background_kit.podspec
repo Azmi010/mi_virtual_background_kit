@@ -22,7 +22,7 @@ in flutter_webrtc based video call apps. Processing is fully on-device.
   }
   s.dependency 'Flutter'
   s.dependency 'flutter_webrtc', '~> 1.6.2'
-  s.dependency 'MediaPipeTasksVision'
+  s.dependency 'MediaPipeTasksVision', '0.10.20'
   s.platform         = :ios, '15.0'
   s.static_framework = true
 
